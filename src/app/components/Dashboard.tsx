@@ -1,771 +1,576 @@
-import { useEffect, useState } from 'react';
-import { AnimatePresence, motion, useMotionValue, PanInfo } from 'motion/react';
-import { Plus, Mic, Settings, ChevronDown, Smartphone } from 'lucide-react';
-import { VoiceInput } from './VoiceInput';
-import { AddTransaction } from './AddTransaction';
-import { SettingsPanel } from './SettingsPanel';
-import { WidgetDemo } from './WidgetDemo';
-import { AgentProfile, OnChainAgentPanel, WalletProfile } from './OnChainAgentPanel';
-import { formatBs, roundToCurrencyStep } from '../utils/currency';
+import { useState, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Settings, ChevronDown, TrendingUp, TrendingDown, X } from 'lucide-react';
+import { useApp, Sale } from '../contexts/AppContext';
+import { formatBs } from '../utils/currency';
+import { BankSyncCard } from './banksync/BankSyncCard';
+import { useOfflineDetection } from '../hooks/useOfflineDetection';
+import { toast } from 'sonner';
 
-interface Category {
-  id: string;
-  name: string;
-  icon: any;
-  color: string;
-  spent: number;
-  budget: number;
-}
-
-interface Transaction {
-  id: string;
-  categoryId: string;
-  amount: number;
-  description: string;
-  date: Date;
-  type: 'necessary' | 'impulse' | 'unknown';
-}
-
-type PeriodFilter = 'current' | 'previous' | 'last30' | 'all';
-type ExpenseFilter = 'all' | 'necessary' | 'impulse';
+type Period = 'today' | 'week' | 'month';
 
 interface Props {
-  categories: Category[];
-  onUpdateCategories: (categories: Category[]) => void;
+  onOpenSettings: () => void;
 }
 
-function getBudgetRangeByCategory(name: string) {
-  const normalized = name.toLowerCase();
-  if (/hogar|alquiler|casa|vivienda/.test(normalized)) return [900, 2400];
-  if (/comida|super|mercado|restaur|almuerzo|desayuno/.test(normalized)) return [400, 1200];
-  if (/transporte|gasolina|movilidad|taxi|pasaje/.test(normalized)) return [180, 700];
-  if (/salud|farmacia|m[eé]dico/.test(normalized)) return [140, 550];
-  if (/educaci[oó]n|curso|estudio/.test(normalized)) return [180, 800];
-  if (/ocio|entretenimiento|salidas|fiesta|cine/.test(normalized)) return [130, 600];
-  return [180, 900];
+const PAYMENT_ICONS: Record<string, string> = {
+  cash: '💵',
+  qr: '📱',
+  transfer: '🏦',
+  card: '💳',
+};
+
+const PAYMENT_LABELS: Record<string, string> = {
+  cash: 'Efectivo',
+  qr: 'QR',
+  transfer: 'Transfer.',
+  card: 'Tarjeta',
+};
+
+const LOCATION_ICONS: Record<string, string> = {
+  store: '🏪',
+  fair: '🏕️',
+  delivery: '🛵',
+  online: '💻',
+};
+
+function isToday(dateStr: string) {
+  return new Date(dateStr).toDateString() === new Date().toDateString();
 }
 
-function generateRealisticBudget(categoryName: string) {
-  const [min, max] = getBudgetRangeByCategory(categoryName);
-  const randomValue = min + Math.random() * (max - min);
-  return roundToCurrencyStep(randomValue, 10);
+function isThisWeek(dateStr: string) {
+  const d = new Date(dateStr);
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  return d >= weekAgo;
 }
 
-function generateRealisticSpent(budget: number) {
-  const regularSpent = budget * (0.42 + Math.random() * 0.38);
-  const occasionalOverrun = budget * (1.03 + Math.random() * 0.18);
-  const spent = Math.random() < 0.17 ? occasionalOverrun : regularSpent;
-  return roundToCurrencyStep(spent, 5);
-}
-
-function shiftDateMonths(baseDate: Date, monthDelta: number, dayOffset = 0) {
-  const shifted = new Date(baseDate);
-  shifted.setMonth(shifted.getMonth() + monthDelta);
-  shifted.setDate(shifted.getDate() + dayOffset);
-  return shifted;
-}
-
-function createSampleTransactions(categories: Category[]): Transaction[] {
+function isThisMonth(dateStr: string) {
+  const d = new Date(dateStr);
   const now = new Date();
-  const findCategory = (pattern: RegExp, fallbackIndex: number) =>
-    categories.find((category) => pattern.test(category.name.toLowerCase())) || categories[fallbackIndex] || categories[0];
-
-  const food = findCategory(/comida|mercado|super|almuerzo|desayuno/, 0);
-  const clothing = findCategory(/ropa|vest/, 1);
-  const transport = findCategory(/transporte|movilidad|taxi|pasaje|gasolina/, 2);
-  const ocio = findCategory(/ocio|salidas|cine|fiesta|entretenimiento/, 3);
-
-  return [
-    food && { id: 'sample-1', categoryId: food.id, amount: 86, description: 'Almuerzo semanal', date: shiftDateMonths(now, 0, -3), type: 'necessary' as const },
-    clothing && { id: 'sample-2', categoryId: clothing.id, amount: 200, description: 'Ropa', date: shiftDateMonths(now, 0, -8), type: 'impulse' as const },
-    transport && { id: 'sample-3', categoryId: transport.id, amount: 45, description: 'Taxi nocturno', date: shiftDateMonths(now, -1, -5), type: 'impulse' as const },
-    ocio && { id: 'sample-4', categoryId: ocio.id, amount: 120, description: 'Salida con amigos', date: shiftDateMonths(now, -1, -12), type: 'impulse' as const },
-  ].filter(Boolean) as Transaction[];
+  return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
 }
 
-function isSameMonth(dateA: Date, dateB: Date) {
-  return dateA.getFullYear() === dateB.getFullYear() && dateA.getMonth() === dateB.getMonth();
+function filterByPeriod(sales: Sale[], period: Period) {
+  if (period === 'today') return sales.filter(s => isToday(s.date));
+  if (period === 'week') return sales.filter(s => isThisWeek(s.date));
+  return sales.filter(s => isThisMonth(s.date));
 }
 
-function isPreviousMonth(date: Date, referenceDate: Date) {
-  const previousMonth = new Date(referenceDate);
-  previousMonth.setMonth(previousMonth.getMonth() - 1);
-  return isSameMonth(date, previousMonth);
-}
-
-export function Dashboard({ categories: initialCategories, onUpdateCategories }: Props) {
-  const [categories, setCategories] = useState<Category[]>(
-    initialCategories.filter((c: any) => c.selected).map((c: any) => ({
-      ...c,
-      budget: generateRealisticBudget(c.name),
-      spent: 0,
-    })).map((c: any) => ({
-      ...c,
-      spent: generateRealisticSpent(c.budget),
-    }))
-  );
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [showVoiceInput, setShowVoiceInput] = useState(false);
-  const [showAddTransaction, setShowAddTransaction] = useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [showWidgetDemo, setShowWidgetDemo] = useState(false);
-  const [showOnChainPanel, setShowOnChainPanel] = useState(false);
-  const [isTargetFlashing, setIsTargetFlashing] = useState(false);
-  const [syncEvent, setSyncEvent] = useState<{ hash: string; isImpulse: boolean } | null>(null);
-  const [activeWalletId, setActiveWalletId] = useState('wallet-main');
-  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('current');
-  const [expenseFilter, setExpenseFilter] = useState<ExpenseFilter>('all');
-  const [categoryFilterId, setCategoryFilterId] = useState<string | null>(null);
-  const [isMonthMenuOpen, setIsMonthMenuOpen] = useState(false);
-  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
-
-  useEffect(() => {
-    onUpdateCategories(categories);
-  }, [categories, onUpdateCategories]);
-
-  useEffect(() => {
-    if (transactions.length === 0 && categories.length > 0) {
-      setTransactions(createSampleTransactions(categories));
-    }
-  }, [categories, transactions.length]);
-
-  useEffect(() => {
-    if (!syncEvent) return;
-    const timer = window.setTimeout(() => setSyncEvent(null), 3200);
-    return () => window.clearTimeout(timer);
-  }, [syncEvent]);
-
-  useEffect(() => {
-    if (!isTargetFlashing) return;
-    const timer = window.setTimeout(() => setIsTargetFlashing(false), 650);
-    return () => window.clearTimeout(timer);
-  }, [isTargetFlashing]);
-
-  const buildMockHash = () => {
-    const left = Math.random().toString(16).slice(2, 10);
-    const right = Math.random().toString(16).slice(2, 10);
-    return `0x${left}${right}`;
-  };
-
-  const referenceDate = new Date();
-
-  const filteredTransactions = transactions.filter((transaction) => {
-    const matchesPeriod =
-      periodFilter === 'all'
-        ? true
-        : periodFilter === 'current'
-          ? isSameMonth(transaction.date, referenceDate)
-          : periodFilter === 'previous'
-            ? isPreviousMonth(transaction.date, referenceDate)
-            : transaction.date >= new Date(referenceDate.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-    const matchesExpenseType = expenseFilter === 'all' ? true : transaction.type === expenseFilter;
-    const matchesCategory = categoryFilterId ? transaction.categoryId === categoryFilterId : true;
-
-    return matchesPeriod && matchesExpenseType && matchesCategory;
+function filterByPrevPeriod(sales: Sale[], period: Period) {
+  if (period === 'today') {
+    return sales.filter(s => {
+      const d = new Date(s.date);
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      return d.toDateString() === yesterday.toDateString();
+    });
+  }
+  if (period === 'week') {
+    return sales.filter(s => {
+      const d = new Date(s.date);
+      const now = new Date();
+      const start = new Date(now); start.setDate(now.getDate() - 14);
+      const end = new Date(now); end.setDate(now.getDate() - 7);
+      return d >= start && d < end;
+    });
+  }
+  return sales.filter(s => {
+    const d = new Date(s.date);
+    const now = new Date();
+    return d.getMonth() === now.getMonth() - 1 && d.getFullYear() === now.getFullYear();
   });
-
-  const visibleCategories = categories.map((category) => ({
-    ...category,
-    spent: filteredTransactions
-      .filter((transaction) => transaction.categoryId === category.id)
-      .reduce((sum, transaction) => sum + transaction.amount, 0),
-  })).filter((category) => (categoryFilterId ? category.id === categoryFilterId : true));
-
-  const totalSpent = filteredTransactions.reduce((sum, transaction) => sum + transaction.amount, 0);
-  const totalBudget = visibleCategories.reduce((sum, category) => sum + category.budget, 0);
-
-  const handleCategoryPress = (categoryId: string, deltaY: number) => {
-    if (deltaY < -50) {
-      setSelectedCategoryId(categoryId);
-      setShowAddTransaction(true);
-    } else if (deltaY > 50) {
-      setSelectedCategoryId(categoryId);
-    }
-  };
-
-  const addTransaction = (categoryId: string, amount: number, description: string) => {
-    const lowerDescription = description.toLowerCase();
-    const impulseKeywords = ['antojo', 'capricho', 'delivery', 'snack', 'postre', 'compra'];
-    const transactionType: Transaction['type'] = impulseKeywords.some((keyword) => lowerDescription.includes(keyword))
-      ? 'impulse'
-      : 'necessary';
-
-    const newTransaction: Transaction = {
-      id: Date.now().toString(),
-      categoryId,
-      amount,
-      description,
-      date: new Date(),
-      type: transactionType,
-    };
-
-    const mockHash = buildMockHash();
-
-    setTransactions(prev => [...prev, newTransaction]);
-    setCategories(prev =>
-      prev.map(cat =>
-        cat.id === categoryId ? { ...cat, spent: cat.spent + amount } : cat
-      )
-    );
-    setSyncEvent({ hash: mockHash, isImpulse: transactionType === 'impulse' });
-    setIsTargetFlashing(true);
-    setShowAddTransaction(false);
-    setShowVoiceInput(false);
-  };
-
-  const agentId = '0x4ndf18...drs';
-  const nightTransactions = transactions.filter(t => {
-    const hour = t.date.getHours();
-    return hour >= 21 || hour <= 5;
-  }).length;
-  const freelanceSignals = transactions.filter(t =>
-    /cliente|factura|freelance|servicio/i.test(t.description)
-  ).length;
-  const impulseTransactions = transactions.filter(t => t.type === 'impulse').length;
-  const savingsRatio = totalBudget > 0 ? (totalBudget - totalSpent) / totalBudget : 0;
-  const isDisciplined = savingsRatio >= 0.2 && impulseTransactions <= 2;
-  const savingsStreak = categories.filter(cat => cat.spent <= cat.budget * 0.75).length;
-  const evolutionLevel = Math.min(8, Math.max(1, 1 + savingsStreak + Math.floor(Math.max(0, savingsRatio) * 3)));
-  const agentProfile: AgentProfile =
-    nightTransactions >= 3
-      ? 'Gastador Nocturno'
-      : freelanceSignals >= 2
-        ? 'Freelancer'
-        : savingsRatio >= 0.3 && impulseTransactions <= 1
-          ? 'Ahorrador'
-          : 'Balanceado';
-  const wallets: WalletProfile[] = [
-    {
-      id: 'wallet-main',
-      name: 'Arkive Vault Primary',
-      address: '0x4ndf18c9a7b2e1f4',
-      network: 'Sidechain Neural L2',
-      balance: 4280.75,
-      lastSync: 'Hace 3 min',
-      status: 'Active',
-    },
-    {
-      id: 'wallet-bond',
-      name: 'Travel Reserve',
-      address: '0xa9c71f2d4e8b92c0',
-      network: 'Sidechain Neural L2',
-      balance: 1260.2,
-      lastSync: 'Hace 1 h',
-      status: 'Standby',
-    },
-    {
-      id: 'wallet-cold',
-      name: 'Archive Wallet',
-      address: '0xf4b2107c3e6d81aa',
-      network: 'Cold Storage Vault',
-      balance: 9850,
-      lastSync: 'Ayer',
-      status: 'Cold',
-    },
-  ];
-
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-sm text-muted-foreground mb-1"
-            >
-              {periodFilter === 'current' && 'Este mes'}
-              {periodFilter === 'previous' && 'Mes anterior'}
-              {periodFilter === 'last30' && 'Últimos 30 días'}
-              {periodFilter === 'all' && 'Todo el historial'}
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.1 }}
-              className="text-4xl font-medium"
-            >
-              {formatBs(totalSpent)}
-            </motion.div>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
-              className="text-sm text-muted-foreground"
-            >
-              de {formatBs(totalBudget)}
-            </motion.div>
-          </div>
-          <div className="flex items-center gap-2">
-            <motion.button
-              initial={{ opacity: 0, scale: 0 }}
-              animate={{
-                opacity: 1,
-                scale: 1,
-                boxShadow: isTargetFlashing
-                  ? ['0 0 0px rgba(34,211,238,0.25)', '0 0 24px rgba(34,211,238,0.5)', '0 0 0px rgba(34,211,238,0.25)']
-                  : '0 0 0px rgba(34,211,238,0.18)',
-              }}
-              transition={{ delay: 0.25, duration: isTargetFlashing ? 0.6 : 0.3 }}
-              onClick={() => setShowOnChainPanel(true)}
-              className="relative h-12 w-12 rounded-full border border-cyan-300/35 bg-[radial-gradient(circle_at_35%_30%,rgba(165,243,252,0.22),rgba(14,116,144,0.25)_38%,rgba(6,10,18,0.9)_75%)] flex items-center justify-center"
-              aria-label="Abrir The Neural Vault"
-            >
-              <motion.span
-                animate={{ opacity: [0.25, 0.65, 0.25], scale: [1, 1.08, 1] }}
-                transition={{ duration: 2.1, repeat: Infinity }}
-                className="pointer-events-none absolute inset-1 rounded-full border border-cyan-200/30"
-              />
-              <motion.span
-                animate={{ scale: [1, 1.18, 1], opacity: [0.45, 0.95, 0.45] }}
-                transition={{ duration: 2.2, repeat: Infinity }}
-                className="pointer-events-none h-4 w-4 rounded-full bg-cyan-100/85"
-              />
-              {isTargetFlashing && (
-                <motion.span
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: [0, 0.8, 0] }}
-                  transition={{ duration: 0.6 }}
-                  className="pointer-events-none absolute inset-0 rounded-full bg-cyan-300/30"
-                />
-              )}
-            </motion.button>
-
-            <motion.button
-              initial={{ opacity: 0, scale: 0 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.3 }}
-              onClick={() => setShowSettings(true)}
-              className="w-12 h-12 rounded-full bg-card flex items-center justify-center"
-              aria-label="Abrir ajustes"
-            >
-              <Settings size={20} className="text-muted-foreground" />
-            </motion.button>
-          </div>
-        </div>
-
-        <div className="flex gap-3 mb-4 flex-wrap">
-          <div className="relative">
-            <motion.button
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="px-4 py-2 rounded-full bg-card text-sm flex items-center gap-2"
-              onClick={() => {
-                setIsMonthMenuOpen((value) => !value);
-                setIsFilterMenuOpen(false);
-              }}
-            >
-              <ChevronDown size={16} />
-              {periodFilter === 'current' && 'Este mes'}
-              {periodFilter === 'previous' && 'Mes anterior'}
-              {periodFilter === 'last30' && '30 días'}
-              {periodFilter === 'all' && 'Todo'}
-            </motion.button>
-
-            <AnimatePresence>
-              {isMonthMenuOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  className="absolute left-0 top-full z-30 mt-2 w-48 overflow-hidden rounded-2xl border border-border bg-card p-1 shadow-xl"
-                >
-                  {[
-                    { id: 'current', label: 'Este mes' },
-                    { id: 'previous', label: 'Mes anterior' },
-                    { id: 'last30', label: 'Últimos 30 días' },
-                    { id: 'all', label: 'Todo el historial' },
-                  ].map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => {
-                        setPeriodFilter(option.id as PeriodFilter);
-                        setIsMonthMenuOpen(false);
-                      }}
-                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${periodFilter === option.id ? 'bg-cyan-300/10 text-cyan-100' : 'hover:bg-white/5'}`}
-                    >
-                      <span>{option.label}</span>
-                      {periodFilter === option.id && <span className="text-xs">Activo</span>}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          <div className="relative">
-            <motion.button
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.05 }}
-              className="px-4 py-2 rounded-full bg-card text-sm flex items-center gap-2"
-              onClick={() => {
-                setIsFilterMenuOpen((value) => !value);
-                setIsMonthMenuOpen(false);
-              }}
-            >
-              <ChevronDown size={16} />
-              Filtrar
-            </motion.button>
-
-            <AnimatePresence>
-              {isFilterMenuOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  className="absolute left-0 top-full z-30 mt-2 w-60 overflow-hidden rounded-2xl border border-border bg-card p-1 shadow-xl"
-                >
-                  <div className="px-3 py-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    Tipo de gasto
-                  </div>
-                  {[
-                    { id: 'all', label: 'Todos' },
-                    { id: 'necessary', label: 'Necesarios' },
-                    { id: 'impulse', label: 'Impulsivos' },
-                  ].map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => {
-                        setExpenseFilter(option.id as ExpenseFilter);
-                        setIsFilterMenuOpen(false);
-                      }}
-                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${expenseFilter === option.id ? 'bg-cyan-300/10 text-cyan-100' : 'hover:bg-white/5'}`}
-                    >
-                      <span>{option.label}</span>
-                      {expenseFilter === option.id && <span className="text-xs">Activo</span>}
-                    </button>
-                  ))}
-
-                  <div className="my-1 h-px bg-border" />
-
-                  <div className="px-3 py-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    Categoría
-                  </div>
-                  <button
-                    onClick={() => {
-                      setCategoryFilterId(null);
-                      setIsFilterMenuOpen(false);
-                    }}
-                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${categoryFilterId === null ? 'bg-cyan-300/10 text-cyan-100' : 'hover:bg-white/5'}`}
-                  >
-                    <span>Todas</span>
-                    {categoryFilterId === null && <span className="text-xs">Activo</span>}
-                  </button>
-                  {categories.map((category) => (
-                    <button
-                      key={category.id}
-                      onClick={() => {
-                        setCategoryFilterId(category.id);
-                        setIsFilterMenuOpen(false);
-                      }}
-                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition-colors ${categoryFilterId === category.id ? 'bg-cyan-300/10 text-cyan-100' : 'hover:bg-white/5'}`}
-                    >
-                      <span>{category.name}</span>
-                      {categoryFilterId === category.id && <span className="text-xs">Activo</span>}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-
-        {(periodFilter !== 'current' || expenseFilter !== 'all' || categoryFilterId) && (
-          <div className="mb-4 flex flex-wrap gap-2 text-xs text-cyan-100/80">
-            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/5 px-3 py-1">
-              Periodo: {periodFilter === 'current' ? 'Este mes' : periodFilter === 'previous' ? 'Mes anterior' : periodFilter === 'last30' ? 'Últimos 30 días' : 'Todo'}
-            </span>
-            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/5 px-3 py-1">
-              Tipo: {expenseFilter === 'all' ? 'Todos' : expenseFilter === 'necessary' ? 'Necesarios' : 'Impulsivos'}
-            </span>
-            {categoryFilterId && (
-              <span className="rounded-full border border-cyan-300/20 bg-cyan-300/5 px-3 py-1">
-                Categoría: {categories.find((category) => category.id === categoryFilterId)?.name}
-              </span>
-            )}
-            <button
-              onClick={() => {
-                setPeriodFilter('current');
-                setExpenseFilter('all');
-                setCategoryFilterId(null);
-              }}
-              className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground"
-            >
-              Limpiar filtros
-            </button>
-          </div>
-        )}
-
-        <div className="mb-4 flex min-h-8 justify-end">
-          {syncEvent && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="rounded-xl border border-cyan-300/30 bg-[#0d1520] px-3 py-2 text-right"
-            >
-              <div className="text-xs text-cyan-200">Sincronizando con Sidechain...</div>
-              <div className="text-[11px] font-mono text-cyan-100/70">{syncEvent.hash}</div>
-              {syncEvent.isImpulse && (
-                <div className="mt-1 max-w-xs text-[11px] text-cyan-50/85">
-                  Tu registro hist\u00f3rico on-chain sugiere que este gasto es emocional. \u00bfDeseas firmar esta transacci\u00f3n?
-                </div>
-              )}
-            </motion.div>
-          )}
-        </div>
-
-        {visibleCategories.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="h-64 flex flex-col items-center justify-center text-muted-foreground"
-          >
-            <p className="mb-2">No hay datos para este filtro</p>
-            <p className="text-sm">Prueba otro periodo o limpia los filtros.</p>
-          </motion.div>
-        ) : (
-          <div className="grid grid-cols-4 gap-4 h-96 mb-8">
-            {visibleCategories.map((category, index) => {
-              const Icon = category.icon;
-              const percentage = (category.spent / category.budget) * 100;
-              const isWarning = percentage > 60 && percentage <= 100;
-              const isExceeded = percentage > 100;
-              const excessAmount = isExceeded ? category.spent - category.budget : 0;
-
-              return (
-                <CategoryColumn
-                  key={category.id}
-                  category={category}
-                  percentage={percentage}
-                  isWarning={isWarning}
-                  isExceeded={isExceeded}
-                  excessAmount={excessAmount}
-                  index={index}
-                  onPress={handleCategoryPress}
-                />
-              );
-            })}
-          </div>
-        )}
-
-        <motion.button
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          onClick={() => setShowHistory(!showHistory)}
-          className="w-full text-center text-muted-foreground text-sm mb-6"
-        >
-          {showHistory ? 'Ocultar historial' : 'Ver historial'}
-        </motion.button>
-
-        {showHistory && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="space-y-3"
-          >
-            {filteredTransactions.length === 0 ? (
-              <p className="text-center text-muted-foreground">No hay transacciones aún</p>
-            ) : (
-              filteredTransactions.map((transaction) => {
-                const category = categories.find(c => c.id === transaction.categoryId);
-                if (!category) return null;
-                const Icon = category.icon;
-
-                return (
-                  <motion.div
-                    key={transaction.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center gap-4 p-4 rounded-2xl bg-card"
-                  >
-                    <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center"
-                      style={{ backgroundColor: category.color + '33' }}
-                    >
-                      <Icon size={24} style={{ color: category.color }} />
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium">{transaction.description}</div>
-                      <div className="text-sm text-muted-foreground">{category.name}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-medium">{formatBs(transaction.amount, true)}</div>
-                    </div>
-                  </motion.div>
-                );
-              })
-            )}
-          </motion.div>
-        )}
-      </div>
-
-      <div className="fixed bottom-8 left-0 right-0 px-6 flex items-center justify-center gap-4">
-        <motion.button
-          initial={{ opacity: 0, scale: 0 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.4 }}
-          onClick={() => setShowAddTransaction(true)}
-          className="w-14 h-14 rounded-full bg-card flex items-center justify-center shadow-lg"
-        >
-          <Plus size={24} className="text-foreground" />
-        </motion.button>
-
-        <motion.button
-          initial={{ opacity: 0, scale: 0 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.5 }}
-          onClick={() => setShowVoiceInput(true)}
-          className="w-16 h-16 rounded-full bg-gradient-to-br from-[#ff9f43] to-[#ff6b6b] flex items-center justify-center shadow-lg"
-        >
-          <Mic size={28} className="text-background" />
-        </motion.button>
-
-        <motion.button
-          initial={{ opacity: 0, scale: 0 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.6 }}
-          onClick={() => setShowWidgetDemo(true)}
-          className="w-14 h-14 rounded-full bg-card flex items-center justify-center shadow-lg"
-        >
-          <Smartphone size={24} className="text-foreground" />
-        </motion.button>
-      </div>
-
-      {showVoiceInput && (
-        <VoiceInput
-          categories={categories}
-          onClose={() => setShowVoiceInput(false)}
-          onAddTransaction={addTransaction}
-        />
-      )}
-
-      {showAddTransaction && (
-        <AddTransaction
-          categories={categories}
-          selectedCategoryId={selectedCategoryId}
-          onClose={() => {
-            setShowAddTransaction(false);
-            setSelectedCategoryId(null);
-          }}
-          onAddTransaction={addTransaction}
-        />
-      )}
-
-      {showSettings && (
-        <SettingsPanel
-          categories={categories}
-          onClose={() => setShowSettings(false)}
-          onUpdateCategories={setCategories}
-        />
-      )}
-
-      {showWidgetDemo && (
-        <WidgetDemo
-          categories={categories}
-          onClose={() => setShowWidgetDemo(false)}
-        />
-      )}
-
-      <OnChainAgentPanel
-        open={showOnChainPanel}
-        onClose={() => setShowOnChainPanel(false)}
-        profile={agentProfile}
-        agentId={agentId}
-        evolutionLevel={evolutionLevel}
-        savingsStreak={savingsStreak}
-        isDisciplined={isDisciplined}
-        lastHash={syncEvent?.hash ?? null}
-        wallets={wallets}
-        activeWalletId={activeWalletId}
-        onWalletChange={setActiveWalletId}
-      />
-    </div>
-  );
 }
 
-function CategoryColumn({ category, percentage, isWarning, isExceeded, excessAmount, index, onPress }: any) {
-  const Icon = category.icon;
-  const y = useMotionValue(0);
+// ── Category long-press modal ─────────────────────────────────────────────────
 
-  const handleDragEnd = (event: any, info: PanInfo) => {
-    onPress(category.id, info.offset.y);
-    y.set(0);
+interface CatWithTotal {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  salesGoal: number;
+  total: number;
+}
+
+function CategoryModal({
+  category,
+  onClose,
+  onUpdateGoal,
+}: {
+  category: CatWithTotal;
+  onClose: () => void;
+  onUpdateGoal: (catId: string, newGoal: number) => void;
+}) {
+  const [tab, setTab] = useState<'expense' | 'goal'>('expense');
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+
+  const handleSaveExpense = () => {
+    if (!amount) return;
+    toast.success(`💸 Gasto registrado: -${formatBs(parseFloat(amount))}`, {
+      description: `${category.emoji} ${category.name}${description ? ' · ' + description : ''}`,
+      duration: 7000,
+    });
+    onClose();
+  };
+
+  const handleSaveGoal = () => {
+    if (!amount) return;
+    onUpdateGoal(category.id, parseFloat(amount));
+    toast.success(`🎯 Presupuesto actualizado: ${formatBs(parseFloat(amount))}`, {
+      description: `${category.emoji} ${category.name}`,
+      duration: 5000,
+    });
+    onClose();
   };
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05 }}
-      className="relative flex flex-col"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      {isExceeded && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="absolute -top-12 left-0 right-0 text-center"
-        >
-          <div className="text-xs text-[#ff9f43] font-medium">
-            +{formatBs(excessAmount)}
-          </div>
-        </motion.div>
-      )}
-
       <motion.div
-        drag="y"
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={0.2}
-        onDragEnd={handleDragEnd}
-        style={{ y }}
-        className="flex-1 relative rounded-3xl bg-card p-3 flex flex-col items-center cursor-grab active:cursor-grabbing"
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 26 }}
+        className="w-full bg-[#18181b] rounded-t-3xl"
       >
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center mb-2"
-          style={{ backgroundColor: category.color + '33' }}
-        >
-          <Icon size={20} style={{ color: category.color }} />
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-border" />
         </div>
 
-        <div className="text-xs text-center mb-2 text-muted-foreground line-clamp-2">
-          {category.name}
+        <div className="flex items-center justify-between px-5 pt-2 pb-4">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
+              style={{ backgroundColor: category.color + '22' }}
+            >
+              {category.emoji}
+            </div>
+            <div>
+              <h3 className="font-semibold">{category.name}</h3>
+              <p className="text-xs text-muted-foreground">
+                Meta: {formatBs(category.salesGoal)} · Vendido: {formatBs(category.total)}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground p-1">
+            <X size={20} />
+          </button>
         </div>
 
-        <div className="flex-1 w-full relative">
-          {isWarning && (
-            <div
-              className="absolute top-0 left-1/2 -translate-x-1/2 w-8 border-t-2 border-dashed"
-              style={{ borderColor: category.color }}
-            />
-          )}
+        <div className="flex gap-2 px-5 mb-5">
+          <button
+            onClick={() => setTab('expense')}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
+            style={{
+              backgroundColor: tab === 'expense' ? '#ef4444' : '#27272a',
+              color: tab === 'expense' ? 'white' : '#a1a1aa',
+            }}
+          >
+            💸 Gasto
+          </button>
+          <button
+            onClick={() => setTab('goal')}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
+            style={{
+              backgroundColor: tab === 'goal' ? category.color : '#27272a',
+              color: tab === 'goal' ? 'white' : '#a1a1aa',
+            }}
+          >
+            🎯 Presupuesto
+          </button>
+        </div>
 
-          {isExceeded && (
-            <div
-              className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 border-t-2 border-dashed"
-              style={{ borderColor: category.color }}
-            />
-          )}
-
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-full flex flex-col justify-end">
-            <motion.div
-              initial={{ height: 0 }}
-              animate={{ height: `${Math.min(percentage, 100)}%` }}
-              transition={{ duration: 0.8, delay: index * 0.05 + 0.3 }}
-              className="w-full rounded-full"
-              style={{ backgroundColor: category.color }}
+        <div className="px-5 pb-8 space-y-4">
+          <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-[#27272a] border border-border">
+            <span className="text-muted-foreground text-sm">Bs.</span>
+            <input
+              type="number"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              placeholder="0"
+              autoFocus
+              className="flex-1 bg-transparent text-2xl font-bold text-foreground outline-none"
             />
           </div>
-        </div>
 
-        <div className="text-xs mt-2 font-medium">
-          {percentage.toFixed(0)}%
+          {tab === 'expense' && (
+            <input
+              type="text"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Descripción (opcional)"
+              className="w-full px-4 py-3 rounded-2xl bg-[#27272a] border border-border text-foreground text-sm outline-none focus:border-[#d946ef]"
+            />
+          )}
+
+          <div className="grid grid-cols-4 gap-2">
+            {(tab === 'expense' ? [100, 300, 500, 1000] : [1000, 2000, 3000, 5000]).map(v => (
+              <button
+                key={v}
+                onClick={() => setAmount(v.toString())}
+                className="py-2 rounded-xl bg-[#27272a] text-xs font-medium text-muted-foreground"
+              >
+                {v >= 1000 ? `${v / 1000}k` : v}
+              </button>
+            ))}
+          </div>
+
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={tab === 'expense' ? handleSaveExpense : handleSaveGoal}
+            disabled={!amount}
+            className="w-full py-4 rounded-2xl font-semibold text-white disabled:opacity-40"
+            style={{
+              background: tab === 'expense'
+                ? 'linear-gradient(135deg, #ef4444, #dc2626)'
+                : `linear-gradient(135deg, ${category.color}, #9333ea)`,
+            }}
+          >
+            {tab === 'expense' ? 'Registrar Gasto' : 'Actualizar Presupuesto'}
+          </motion.button>
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+export function Dashboard({ onOpenSettings }: Props) {
+  const { user, sales, categories, setCategories } = useApp();
+  const [period, setPeriod] = useState<Period>('today');
+  const [isPeriodOpen, setIsPeriodOpen] = useState(false);
+  const [longPressedCat, setLongPressedCat] = useState<CatWithTotal | null>(null);
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useOfflineDetection();
+
+  const selectedCategories = useMemo(() => categories.filter(c => c.selected), [categories]);
+
+  const periodSales = useMemo(() => filterByPeriod(sales, period), [sales, period]);
+  const prevPeriodSales = useMemo(() => filterByPrevPeriod(sales, period), [sales, period]);
+
+  const totalRevenue = useMemo(() => periodSales.reduce((s, t) => s + t.amount, 0), [periodSales]);
+  const prevRevenue = useMemo(() => prevPeriodSales.reduce((s, t) => s + t.amount, 0), [prevPeriodSales]);
+
+  const percentChange = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
+  const isUp = percentChange >= 0;
+
+  const salesByCategory = useMemo(() => {
+    return selectedCategories.map(cat => {
+      const catSales = periodSales.filter(s => s.categoryId === cat.id);
+      const total = catSales.reduce((s, t) => s + t.amount, 0);
+      return { ...cat, total, count: catSales.length };
+    }).filter(c => c.total > 0 || selectedCategories.length <= 4);
+  }, [selectedCategories, periodSales]);
+
+  const paymentTotals = useMemo(() => {
+    const map: Record<string, number> = {};
+    periodSales.forEach(s => { map[s.paymentMethod] = (map[s.paymentMethod] ?? 0) + s.amount; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }, [periodSales]);
+
+  const recentSales = useMemo(() => sales.slice(0, 6), [sales]);
+
+  const periodLabels: Record<Period, string> = { today: 'Hoy', week: 'Esta semana', month: 'Este mes' };
+
+  const handlePressStart = (cat: CatWithTotal) => {
+    pressTimerRef.current = setTimeout(() => setLongPressedCat(cat), 2000);
+  };
+  const handlePressEnd = () => {
+    if (pressTimerRef.current) { clearTimeout(pressTimerRef.current); pressTimerRef.current = null; }
+  };
+  const handleUpdateGoal = (catId: string, newGoal: number) => {
+    setCategories(categories.map(c => c.id === catId ? { ...c, salesGoal: newGoal } : c));
+  };
+
+  return (
+    <div className="flex flex-col bg-background min-h-screen pb-28 overflow-y-auto">
+      {/* Header */}
+      <div className="px-5 pt-12 pb-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <motion.p
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-sm text-muted-foreground"
+            >
+              ¡Hola, {user?.name ?? 'Emprendedora'}! 👋
+            </motion.p>
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="mt-1"
+            >
+              <span className="text-xs px-2.5 py-1 rounded-full border font-medium"
+                style={{ borderColor: '#d946ef55', backgroundColor: '#d946ef11', color: '#d946ef' }}>
+                Comunidad Tinka 🏅
+              </span>
+            </motion.div>
+          </div>
+
+          <motion.button
+            whileTap={{ scale: 0.93 }}
+            onClick={onOpenSettings}
+            className="w-10 h-10 rounded-full bg-card flex items-center justify-center border border-border"
+          >
+            <Settings size={18} className="text-muted-foreground" />
+          </motion.button>
+        </div>
+
+        {/* Period selector */}
+        <div className="relative inline-block">
+          <button
+            onClick={() => setIsPeriodOpen(v => !v)}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground"
+          >
+            <ChevronDown size={14} />
+            {periodLabels[period]}
+          </button>
+          <AnimatePresence>
+            {isPeriodOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.95 }}
+                className="absolute left-0 top-full mt-2 z-30 w-44 bg-card rounded-2xl border border-border overflow-hidden shadow-xl"
+              >
+                {(['today', 'week', 'month'] as Period[]).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => { setPeriod(p); setIsPeriodOpen(false); }}
+                    className={`w-full text-left px-4 py-3 text-sm transition-colors ${period === p ? 'text-[#d946ef] bg-[#d946ef]/10' : 'text-foreground hover:bg-muted'}`}
+                  >
+                    {periodLabels[p]}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Total revenue */}
+        <motion.div key={period} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-3">
+          <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">Total Ventas</p>
+          <div className="flex items-end gap-3">
+            <span className="text-5xl font-bold text-foreground leading-none">
+              {formatBs(totalRevenue)}
+            </span>
+            {prevRevenue > 0 && (
+              <div className={`flex items-center gap-1 mb-1 text-sm font-medium ${isUp ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
+                {isUp ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                {Math.abs(percentChange).toFixed(0)}% vs anterior
+              </div>
+            )}
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            {periodSales.length} venta{periodSales.length !== 1 ? 's' : ''} registrada{periodSales.length !== 1 ? 's' : ''}
+          </p>
+        </motion.div>
+
+        {/* Payment method pills */}
+        {paymentTotals.length > 0 && (
+          <div className="flex gap-2 mt-4 flex-wrap">
+            {paymentTotals.map(([method, amount]) => (
+              <div
+                key={method}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card border border-border text-xs font-medium"
+              >
+                <span>{PAYMENT_ICONS[method]}</span>
+                <span className="text-muted-foreground">{PAYMENT_LABELS[method]}</span>
+                <span className="text-foreground font-semibold">{formatBs(amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Category bars (Barras.jpeg design) ───────────────────────────────── */}
+      {salesByCategory.length > 0 && (
+        <div className="px-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Por categoría</p>
+            <p className="text-[10px] text-muted-foreground">Mantén 2s para gestionar</p>
+          </div>
+          <div
+            className="grid gap-3"
+            style={{ gridTemplateColumns: `repeat(${Math.min(salesByCategory.length, 4)}, 1fr)` }}
+          >
+            {salesByCategory.slice(0, 4).map((cat, index) => {
+              // Bar height relative to goal (not max category)
+              const barPct = cat.salesGoal > 0
+                ? Math.min((cat.total / cat.salesGoal) * 100, 100)
+                : 0;
+
+              const exceeds60 = cat.salesGoal > 0 && cat.total >= cat.salesGoal * 0.6;
+              const exceededGoal = cat.salesGoal > 0 && cat.total > cat.salesGoal;
+              const isLow = cat.salesGoal > 0 && cat.total < cat.salesGoal * 0.6 && cat.total > 0;
+              const achievedPct = cat.salesGoal > 0 ? Math.round((cat.total / cat.salesGoal) * 100) : 0;
+
+              // Card background: light tint of category color; red if low performer
+              const cardBg = isLow ? '#ef444410' : cat.color + '14';
+              // Bar color: red if low, green if exceeded, else category color
+              const barColor = isLow ? '#ef4444' : exceededGoal ? '#10b981' : cat.color;
+
+              return (
+                <motion.div
+                  key={cat.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.07 }}
+                  onMouseDown={() => handlePressStart(cat)}
+                  onMouseUp={handlePressEnd}
+                  onMouseLeave={handlePressEnd}
+                  onTouchStart={() => handlePressStart(cat)}
+                  onTouchEnd={handlePressEnd}
+                  onTouchCancel={handlePressEnd}
+                  className="flex flex-col items-center rounded-2xl p-3 cursor-pointer select-none"
+                  style={{ backgroundColor: cardBg, height: '192px' }}
+                >
+                  {/* Emoji + name — fixed top section */}
+                  <span className="text-2xl mb-1 flex-shrink-0">{cat.emoji}</span>
+                  <p className="text-[10px] text-muted-foreground text-center mb-2 truncate w-full leading-tight flex-shrink-0">
+                    {cat.name}
+                  </p>
+
+                  {/* Bar with dashed goal outline — flex-1 so all cards same height */}
+                  <div className="w-full flex-1 relative min-h-0">
+                    {/* Dashed rectangle = goal boundary. Shown only when ≥60% */}
+                    {exceeds60 && (
+                      <div
+                        className="absolute inset-0 rounded-xl border-2 border-dashed"
+                        style={{ borderColor: cat.color + '80' }}
+                      />
+                    )}
+
+                    {/* Filled bar — grows from bottom */}
+                    {cat.total > 0 && (
+                      <motion.div
+                        initial={{ height: '0%' }}
+                        animate={{ height: `${Math.max(barPct, 6)}%` }}
+                        transition={{ duration: 0.9, delay: index * 0.07 + 0.15, ease: [0.34, 1.2, 0.64, 1] }}
+                        className="absolute bottom-0 rounded-xl"
+                        style={{
+                          left: exceeds60 ? '3px' : '0px',
+                          right: exceeds60 ? '3px' : '0px',
+                          backgroundColor: barColor,
+                        }}
+                      />
+                    )}
+
+                    {/* Empty state */}
+                    {cat.total === 0 && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-[10px] text-muted-foreground">—</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Fixed-height bottom info — always same space so all cards align */}
+                  <div className="mt-2 flex flex-col items-center flex-shrink-0" style={{ height: '36px', justifyContent: 'flex-start' }}>
+                    <p
+                      className="text-[11px] font-bold text-center leading-tight"
+                      style={{ color: isLow ? '#ef4444' : barColor }}
+                    >
+                      {cat.total > 0 ? formatBs(cat.total) : '—'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      {cat.salesGoal > 0 && cat.total > 0 ? `${achievedPct}%` : ' '}
+                    </p>
+                    <p className="text-[9px] text-[#10b981] font-semibold leading-tight" style={{ visibility: exceededGoal ? 'visible' : 'hidden' }}>
+                      ✓ meta
+                    </p>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* No sales state */}
+      {periodSales.length === 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col items-center py-12 px-8 text-center text-muted-foreground"
+        >
+          <span className="text-4xl mb-4">📱</span>
+          <p className="font-medium mb-1">Sin ventas {periodLabels[period].toLowerCase()}</p>
+          <p className="text-sm">Usa el micrófono para registrar tu primera venta</p>
+        </motion.div>
+      )}
+
+      {/* BancaMovil FIE sync card */}
+      <BankSyncCard />
+
+      {/* Recent sales */}
+      <div className="px-5">
+        <p className="text-xs text-muted-foreground uppercase tracking-wide mb-3">Últimas ventas</p>
+        <div className="space-y-2">
+          {recentSales.map((sale, index) => {
+            const cat = categories.find(c => c.id === sale.categoryId);
+            const date = new Date(sale.date);
+            const timeStr = date.toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' });
+            const dateStr = isToday(sale.date) ? `Hoy ${timeStr}` : date.toLocaleDateString('es-BO', { day: 'numeric', month: 'short' });
+
+            return (
+              <motion.div
+                key={sale.id}
+                initial={{ opacity: 0, x: -16 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.04 }}
+                className="flex items-center gap-3 p-3.5 rounded-2xl bg-card"
+              >
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                  style={{ backgroundColor: (cat?.color ?? '#8b5cf6') + '22' }}
+                >
+                  {cat?.emoji ?? '📦'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium truncate">{sale.product}</p>
+                    {sale.autoDetected && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#d946ef]/15 text-[#d946ef] flex-shrink-0">
+                        Auto 🤖
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-xs text-muted-foreground">{PAYMENT_ICONS[sale.paymentMethod]} {PAYMENT_LABELS[sale.paymentMethod]}</span>
+                    <span className="text-muted-foreground text-xs">·</span>
+                    <span className="text-xs text-muted-foreground">{LOCATION_ICONS[sale.location]}</span>
+                    <span className="text-muted-foreground text-xs">·</span>
+                    <span className="text-xs text-muted-foreground">{dateStr}</span>
+                  </div>
+                </div>
+                <div className="text-sm font-semibold text-[#10b981] flex-shrink-0">
+                  +{formatBs(sale.amount)}
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Category long-press modal */}
+      <AnimatePresence>
+        {longPressedCat && (
+          <CategoryModal
+            category={longPressedCat}
+            onClose={() => setLongPressedCat(null)}
+            onUpdateGoal={handleUpdateGoal}
+          />
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

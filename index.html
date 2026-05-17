@@ -4,14 +4,17 @@
     <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>Arkive</title>
+      <title>Tinka Digital · Banco FIE</title>
       <link rel="icon" type="image/png" href="/favicon/favicon-96x96.png" sizes="96x96" />
       <link rel="icon" type="image/svg+xml" href="/favicon/favicon.svg" />
       <link rel="shortcut icon" href="/favicon/favicon.ico" />
       <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png" />
-      <meta name="apple-mobile-web-app-title" content="Arkive" />
+      <meta name="apple-mobile-web-app-title" content="Tinka Digital" />
+      <meta name="apple-mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       <link rel="manifest" href="/favicon/site.webmanifest" />
-      <meta name="theme-color" content="#0a0a0f" />
+      <meta name="theme-color" content="#d946ef" />
+      <meta name="description" content="Herramienta digital de registro de ventas para emprendedores Tinka · Banco FIE Bolivia" />
       <style>
         html, body {
           height: 100%;
@@ -31,6 +34,13 @@
     <body>
       <div id="root"></div>
       <script type="module" src="/src/main.tsx"></script>
+      <script>
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(() => {});
+          });
+        }
+      </script>
     </body>
   </html>
   

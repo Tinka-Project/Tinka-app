@@ -1,168 +1,199 @@
 import { useState } from 'react';
-import { motion } from 'motion/react';
-import { ShoppingBag, Shirt, UtensilsCrossed, Gem, Car, Dog, Home, Plus, ArrowRight } from 'lucide-react';
-
-interface Category {
-  id: string;
-  name: string;
-  icon: any;
-  color: string;
-  selected: boolean;
-}
-
-const defaultCategories: Category[] = [
-  { id: '1', name: 'Compras', icon: ShoppingBag, color: '#10b981', selected: false },
-  { id: '2', name: 'Ropa', icon: Shirt, color: '#3b82f6', selected: false },
-  { id: '3', name: 'Comer afuera', icon: UtensilsCrossed, color: '#ff9f43', selected: false },
-  { id: '4', name: 'Lujo', icon: Gem, color: '#06b6d4', selected: false },
-  { id: '5', name: 'Auto', icon: Car, color: '#ec4899', selected: false },
-  { id: '6', name: 'Mascotas', icon: Dog, color: '#f59e0b', selected: false },
-  { id: '7', name: 'Casa', icon: Home, color: '#8b5cf6', selected: false },
-];
+import { motion, AnimatePresence } from 'motion/react';
+import { Plus, ArrowRight, Check } from 'lucide-react';
+import { ProductCategory, DEFAULT_CATEGORIES } from '../contexts/AppContext';
 
 interface Props {
-  onNext: (categories: Category[]) => void;
+  onNext: (categories: ProductCategory[]) => void;
 }
 
-export function OnboardingCategories({ onNext }: Props) {
-  const [categories, setCategories] = useState<Category[]>(defaultCategories);
-  const [showNewCategory, setShowNewCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
+const EMOJI_OPTIONS = ['🧶', '👗', '🍽️', '💄', '🔧', '📱', '🏠', '🌿', '🎨', '👟', '🧁', '📦'];
+const COLOR_OPTIONS = ['#8b5cf6', '#3b82f6', '#f59e0b', '#ec4899', '#10b981', '#06b6d4', '#ef4444', '#f97316'];
 
-  const toggleCategory = (id: string) => {
-    setCategories(prev =>
-      prev.map(cat =>
-        cat.id === id ? { ...cat, selected: !cat.selected } : cat
-      )
-    );
+export function OnboardingCategories({ onNext }: Props) {
+  const [categories, setCategories] = useState<ProductCategory[]>(DEFAULT_CATEGORIES);
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newEmoji, setNewEmoji] = useState('🧶');
+  const [newColor, setNewColor] = useState('#8b5cf6');
+
+  const toggle = (id: string) => {
+    setCategories(prev => prev.map(c => c.id === id ? { ...c, selected: !c.selected } : c));
   };
 
   const addCategory = () => {
-    if (newCategoryName.trim()) {
-      const newCategory: Category = {
-        id: Date.now().toString(),
-        name: newCategoryName,
-        icon: ShoppingBag,
-        color: '#ff9f43',
-        selected: true,
-      };
-      setCategories(prev => [...prev, newCategory]);
-      setNewCategoryName('');
-      setShowNewCategory(false);
-    }
+    if (!newName.trim()) return;
+    const cat: ProductCategory = {
+      id: Date.now().toString(),
+      name: newName.trim(),
+      emoji: newEmoji,
+      color: newColor,
+      selected: true,
+      salesGoal: 1500,
+    };
+    setCategories(prev => [...prev, cat]);
+    setNewName('');
+    setNewEmoji('🧶');
+    setNewColor('#8b5cf6');
+    setShowNewCategory(false);
   };
 
+  const selectedCount = categories.filter(c => c.selected).length;
+
   return (
-    <div className="min-h-screen bg-background text-foreground p-6 flex flex-col">
-      <motion.button
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="self-end mb-4 text-muted-foreground"
-        onClick={() => onNext(categories)}
-      >
-        ✕
-      </motion.button>
+    <div className="min-h-screen bg-background text-foreground flex flex-col px-5 pt-10 pb-6">
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, #d946ef, #9333ea)' }}>
+            <span className="text-white text-sm font-bold">T</span>
+          </div>
+          <span className="text-xs text-muted-foreground font-medium">Tinka Digital</span>
+        </div>
+        <h1 className="text-2xl font-bold mb-1">¿Qué vendes?</h1>
+        <p className="text-sm text-muted-foreground mb-8">
+          Selecciona las categorías de productos de tu negocio.
+        </p>
+      </motion.div>
 
-      <motion.h1
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
-      >
-        Elige tus categorías
-      </motion.h1>
+      {/* Grid */}
+      <div className="grid grid-cols-3 gap-3 mb-5 flex-1">
+        {categories.map((cat, index) => (
+          <motion.button
+            key={cat.id}
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: index * 0.04 }}
+            onClick={() => toggle(cat.id)}
+            className="relative aspect-square rounded-2xl flex flex-col items-center justify-center gap-2 transition-all"
+            style={{
+              backgroundColor: cat.selected ? cat.color + '22' : '#18181b',
+              border: `2px solid ${cat.selected ? cat.color : '#3f3f46'}`,
+            }}
+          >
+            <span className="text-3xl">{cat.emoji}</span>
+            <span className="text-xs text-center font-medium leading-tight px-1">{cat.name}</span>
+            {cat.selected && (
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: cat.color }}
+              >
+                <Check size={11} className="text-white" strokeWidth={3} />
+              </motion.div>
+            )}
+          </motion.button>
+        ))}
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        {categories.map((category, index) => {
-          const Icon = category.icon;
-          return (
-            <motion.button
-              key={category.id}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: index * 0.05 }}
-              onClick={() => toggleCategory(category.id)}
-              className={`relative aspect-square rounded-3xl p-4 flex flex-col items-center justify-center gap-2 transition-all ${
-                category.selected
-                  ? 'bg-opacity-20 ring-2 ring-offset-2 ring-offset-background'
-                  : 'bg-card'
-              }`}
-              style={{
-                backgroundColor: category.selected ? category.color + '33' : undefined,
-                borderColor: category.selected ? category.color : undefined,
-                ringColor: category.selected ? category.color : undefined,
-              }}
-            >
-              <Icon size={32} style={{ color: category.color }} />
-              <span className="text-xs text-center">{category.name}</span>
-              {category.selected && (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="absolute top-2 right-2 w-5 h-5 rounded-full bg-success flex items-center justify-center"
-                >
-                  <span className="text-xs">✓</span>
-                </motion.div>
-              )}
-            </motion.button>
-          );
-        })}
-
+        {/* Add category */}
         <motion.button
-          initial={{ opacity: 0, scale: 0.8 }}
+          initial={{ opacity: 0, scale: 0.85 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: categories.length * 0.05 }}
+          transition={{ delay: categories.length * 0.04 }}
           onClick={() => setShowNewCategory(true)}
-          className="aspect-square rounded-3xl bg-card flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border"
+          className="aspect-square rounded-2xl bg-card flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border"
         >
-          <Plus size={32} className="text-muted-foreground" />
-          <span className="text-xs text-center text-muted-foreground">Añadir categoría</span>
+          <Plus size={28} className="text-muted-foreground" />
+          <span className="text-xs text-muted-foreground text-center">Añadir</span>
         </motion.button>
       </div>
 
-      {showNewCategory && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="fixed inset-0 bg-background z-50 p-6 flex flex-col"
+      {selectedCount > 0 && (
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-center text-sm text-muted-foreground mb-4"
         >
-          <button
-            onClick={() => setShowNewCategory(false)}
-            className="self-end mb-4 text-muted-foreground"
-          >
-            ✕
-          </button>
-
-          <h2 className="mb-8">Categoría</h2>
-
-          <input
-            type="text"
-            value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.target.value)}
-            placeholder="Nombre de la categoría"
-            className="w-full p-4 rounded-2xl bg-card border border-border mb-6 text-foreground"
-            autoFocus
-          />
-
-          <button
-            onClick={addCategory}
-            className="w-full p-4 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center gap-2"
-          >
-            <span>✓</span>
-            Guardar
-          </button>
-        </motion.div>
+          {selectedCount} categoría{selectedCount !== 1 ? 's' : ''} seleccionada{selectedCount !== 1 ? 's' : ''}
+        </motion.p>
       )}
 
       <motion.button
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
+        whileTap={{ scale: 0.97 }}
         onClick={() => onNext(categories)}
-        className="mt-auto w-full p-4 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center gap-2"
+        className="w-full py-4 rounded-2xl font-semibold text-white flex items-center justify-center gap-2"
+        style={{ background: 'linear-gradient(135deg, #d946ef, #9333ea)' }}
       >
-        Siguiente
+        {selectedCount === 0 ? 'Continuar sin seleccionar' : 'Siguiente'}
         <ArrowRight size={20} />
       </motion.button>
+
+      {/* New category modal */}
+      <AnimatePresence>
+        {showNewCategory && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-end"
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25 }}
+              className="w-full bg-card rounded-t-3xl p-6 space-y-5"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Nueva categoría</h3>
+                <button onClick={() => setShowNewCategory(false)} className="text-muted-foreground">✕</button>
+              </div>
+
+              <input
+                type="text"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="Ej: Joyería, Cuero, Cerámica..."
+                autoFocus
+                className="w-full px-4 py-3 rounded-2xl bg-background border border-border text-foreground placeholder:text-muted-foreground outline-none focus:border-[#d946ef]"
+              />
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-3">Ícono</p>
+                <div className="flex flex-wrap gap-2">
+                  {EMOJI_OPTIONS.map(e => (
+                    <button
+                      key={e}
+                      onClick={() => setNewEmoji(e)}
+                      className={`w-10 h-10 rounded-xl text-xl flex items-center justify-center transition-all ${newEmoji === e ? 'bg-[#d946ef]/20 ring-2 ring-[#d946ef]' : 'bg-background'}`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm text-muted-foreground mb-3">Color</p>
+                <div className="flex gap-2">
+                  {COLOR_OPTIONS.map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setNewColor(c)}
+                      className={`w-8 h-8 rounded-full transition-all ${newColor === c ? 'ring-2 ring-offset-2 ring-offset-card ring-white' : ''}`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={addCategory}
+                disabled={!newName.trim()}
+                className="w-full py-4 rounded-2xl font-semibold text-white disabled:opacity-40"
+                style={{ background: 'linear-gradient(135deg, #d946ef, #9333ea)' }}
+              >
+                Agregar categoría
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

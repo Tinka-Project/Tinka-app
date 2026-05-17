@@ -1,118 +1,99 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Check, TrendingDown } from 'lucide-react';
-import { formatBs } from '../utils/currency';
+import { X, Check } from 'lucide-react';
+import { PaymentMethod, SaleLocation, useApp } from '../contexts/AppContext';
+import { PrefilledSale } from './sales/SaleConfirmModal';
 
 interface Props {
-  categories: any[];
   onClose: () => void;
-  onAddTransaction: (categoryId: string, amount: number, description: string) => void;
+  onSaleDetected: (sale: PrefilledSale) => void;
 }
 
-export function VoiceInput({ categories, onClose, onAddTransaction }: Props) {
+export function VoiceInput({ onClose, onSaleDetected }: Props) {
+  const { categories } = useApp();
   const [isListening, setIsListening] = useState(true);
   const [transcription, setTranscription] = useState('');
-  const [analysis, setAnalysis] = useState<any>(null);
+
+  const selectedCats = categories.filter(c => c.selected);
+  const defaultCategoryId = selectedCats[0]?.id ?? '1';
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const listenTimer = setTimeout(() => {
       setIsListening(false);
-      setTranscription('Gasté 200 bolivianos en ropa');
+      setTranscription('Vendí un Samsung Galaxy A54 a 1800 Bs por QR en la tienda');
 
       setTimeout(() => {
-        const clothingCategory = categories.find(c =>
-          c.name.toLowerCase().includes('ropa') ||
-          c.name.toLowerCase().includes('vest')
-        ) || categories[0];
+        const techCat = selectedCats.find(c =>
+          c.name.toLowerCase().includes('cel') || c.name.toLowerCase().includes('tech') || c.name.toLowerCase().includes('sam')
+        ) ?? selectedCats[0];
 
-        setAnalysis({
-          amount: 200,
-          category: clothingCategory,
-          description: 'Ropa',
-          translation: 'Esto equivale a aproximadamente 25 pasajes de micro',
-          projection: 'Tu registro histórico on-chain sugiere que este gasto puede ser emocional o impulsivo.',
+        onSaleDetected({
+          product: 'Samsung Galaxy A54',
+          amount: 1800,
+          paymentMethod: 'qr' as PaymentMethod,
+          location: 'store' as SaleLocation,
+          categoryId: techCat?.id ?? defaultCategoryId,
         });
-      }, 500);
-    }, 2000);
+      }, 1000);
+    }, 5000);
 
-    return () => clearTimeout(timer);
-  }, [categories]);
-
-  const handleConfirm = (type: 'necessary' | 'impulse') => {
-    if (analysis) {
-      onAddTransaction(analysis.category.id, analysis.amount, analysis.description);
-    }
-  };
+    return () => clearTimeout(listenTimer);
+  }, []);
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-gradient-to-br from-[#ff9f43] via-[#ff6b6b] to-[#ec4899] flex flex-col items-center justify-center p-6"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center p-6"
+      style={{ background: 'linear-gradient(160deg, #6d28d9 0%, #9333ea 40%, #d946ef 100%)' }}
     >
       <AnimatePresence mode="wait">
         {isListening ? (
           <motion.div
             key="listening"
-            initial={{ opacity: 0, scale: 0.8 }}
+            initial={{ opacity: 0, scale: 0.85 }}
             animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
+            exit={{ opacity: 0, scale: 0.85 }}
             className="flex flex-col items-center"
           >
-            <motion.div className="text-white text-2xl font-medium mb-12">
+            <motion.p
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-white/70 text-sm mb-2 font-medium tracking-wide uppercase"
+            >
+              Registra tu venta
+            </motion.p>
+            <motion.div className="text-white text-2xl font-semibold mb-12">
               Con la voz
             </motion.div>
 
-            <div className="relative mb-12">
-              {[...Array(3)].map((_, i) => (
+            {/* Waveform / pulse rings */}
+            <div className="relative mb-14">
+              {[0, 1, 2].map(i => (
                 <motion.div
                   key={i}
-                  animate={{
-                    scale: [1, 1.5, 1],
-                    opacity: [0.3, 0, 0.3],
-                  }}
-                  transition={{
-                    duration: 2,
-                    repeat: Infinity,
-                    delay: i * 0.3,
-                  }}
-                  className="absolute inset-0 -m-8 rounded-full border-2 border-white"
+                  animate={{ scale: [1, 1.6, 1], opacity: [0.35, 0, 0.35] }}
+                  transition={{ duration: 2, repeat: Infinity, delay: i * 0.4 }}
+                  className="absolute inset-0 -m-10 rounded-full border-2 border-white/50"
                 />
               ))}
-              <div className="relative w-32 h-32 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                <motion.div
-                  animate={{
-                    scaleY: [1, 1.5, 0.8, 1.3, 1, 1.2, 0.9, 1],
-                  }}
-                  transition={{
-                    duration: 1,
-                    repeat: Infinity,
-                  }}
-                  className="w-1 h-16 bg-white rounded-full mr-1"
-                />
-                <motion.div
-                  animate={{
-                    scaleY: [1.2, 0.8, 1.5, 1, 1.3, 0.9, 1.2, 1],
-                  }}
-                  transition={{
-                    duration: 1,
-                    repeat: Infinity,
-                  }}
-                  className="w-1 h-20 bg-white rounded-full mr-1"
-                />
-                <motion.div
-                  animate={{
-                    scaleY: [0.8, 1.3, 1, 1.5, 0.9, 1.2, 1, 1.1],
-                  }}
-                  transition={{
-                    duration: 1,
-                    repeat: Infinity,
-                  }}
-                  className="w-1 h-12 bg-white rounded-full"
-                />
+              <div className="relative w-32 h-32 rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center gap-1">
+                {[1, 1.6, 0.9, 1.4, 1, 1.5, 0.8].map((scale, i) => (
+                  <motion.div
+                    key={i}
+                    animate={{ scaleY: [1, scale, 1, scale * 0.7, 1] }}
+                    transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.12 }}
+                    className="w-1 rounded-full bg-white"
+                    style={{ height: `${20 + i * 4}px` }}
+                  />
+                ))}
               </div>
             </div>
+
+            <p className="text-white/70 text-sm text-center max-w-xs mb-10 italic">
+              "Vendí un iPhone 15 a 4500 Bs por transferencia..."
+            </p>
 
             <div className="flex gap-6">
               <motion.button
@@ -126,106 +107,30 @@ export function VoiceInput({ categories, onClose, onAddTransaction }: Props) {
                 whileTap={{ scale: 0.9 }}
                 className="w-14 h-14 rounded-full bg-white flex items-center justify-center"
               >
-                <Check size={24} className="text-[#ff9f43]" />
+                <Check size={24} style={{ color: '#9333ea' }} />
               </motion.button>
             </div>
           </motion.div>
         ) : (
           <motion.div
-            key="analysis"
+            key="processing"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="w-full max-w-md"
+            className="flex flex-col items-center gap-4"
           >
-            <motion.button
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              onClick={onClose}
-              className="mb-6 text-white"
-            >
-              <X size={24} />
-            </motion.button>
-
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+              className="w-12 h-12 rounded-full border-2 border-white/30 border-t-white"
+            />
+            <p className="text-white text-center text-base font-medium">
+              Procesando tu venta...
+            </p>
             {transcription && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-white text-xl mb-8 text-center"
-              >
+              <p className="text-white/70 text-sm text-center italic max-w-xs">
                 "{transcription}"
-              </motion.div>
-            )}
-
-            {analysis && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.2 }}
-                className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 space-y-6"
-              >
-                <div className="flex items-center gap-4">
-                  <div
-                    className="w-16 h-16 rounded-2xl flex items-center justify-center"
-                    style={{ backgroundColor: analysis.category.color + '33' }}
-                  >
-                    {analysis.category.icon && (
-                      <analysis.category.icon size={32} style={{ color: analysis.category.color }} />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-white text-2xl font-medium">
-                      {formatBs(analysis.amount, true)}
-                    </div>
-                    <div className="text-white/70">
-                      {analysis.category.name}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="h-px bg-white/20" />
-
-                <div>
-                  <div className="text-white text-lg font-medium mb-2">
-                    💡Ten Cuenta
-                  </div>
-                  <div className="text-white/90">
-                    {analysis.translation}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-white text-lg font-medium mb-2 flex items-center gap-2">
-                    <TrendingDown size={20} />
-                    Proyección
-                  </div>
-                  <div className="text-white/90">
-                    {analysis.projection}
-                  </div>
-                </div>
-
-                <div className="h-px bg-white/20" />
-
-                <div>
-                  <div className="text-white text-sm mb-3">
-                    ¿Este gasto te acerca o te aleja de lo que quieres?
-                  </div>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => handleConfirm('necessary')}
-                      className="flex-1 py-3 rounded-xl bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-colors"
-                    >
-                      Necesario
-                    </button>
-                    <button
-                      onClick={() => handleConfirm('impulse')}
-                      className="flex-1 py-3 rounded-xl bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-colors"
-                    >
-                      Impulso
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
+              </p>
             )}
           </motion.div>
         )}

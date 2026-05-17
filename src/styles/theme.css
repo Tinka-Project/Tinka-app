@@ -42,27 +42,29 @@
 }
 
 .dark {
-  --background: #0a0a0f;
+  --background: #09090b;
   --foreground: oklch(0.985 0 0);
-  --card: #131318;
+  --card: #18181b;
   --card-foreground: oklch(0.985 0 0);
-  --popover: #131318;
+  --popover: #18181b;
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: #1a1a22;
+  --primary: #d946ef;
+  --primary-foreground: #ffffff;
+  --secondary: #27272a;
   --secondary-foreground: oklch(0.985 0 0);
-  --muted: #1a1a22;
-  --muted-foreground: #8a8a9e;
-  --accent: #1a1a22;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
   --accent-foreground: oklch(0.985 0 0);
-  --warning: #ff9f43;
+  --brand: #d946ef;
+  --brand-dim: #a21caf;
+  --warning: #f59e0b;
   --warning-foreground: #0a0a0f;
   --success: #10b981;
   --success-foreground: #0a0a0f;
-  --border: #2a2a35;
-  --input: #1a1a22;
-  --ring: #ff9f43;
+  --border: #3f3f46;
+  --input: #27272a;
+  --ring: #d946ef;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
   --chart-1: #ff9f43;
@@ -105,6 +107,8 @@
   --color-input: var(--input);
   --color-input-background: var(--input-background);
   --color-switch-background: var(--switch-background);
+  --color-brand: var(--brand);
+  --color-brand-dim: var(--brand-dim);
   --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
