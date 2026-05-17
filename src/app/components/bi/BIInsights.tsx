@@ -5,7 +5,7 @@ import { useApp, Sale } from '../../contexts/AppContext';
 import { formatBs } from '../../utils/currency';
 import { toast } from 'sonner';
 
-const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const HOUR_RANGES = ['8-10', '10-12', '12-14', '14-16', '16-18', '18-20'];
 
 function thisMonthSales(sales: Sale[]) {

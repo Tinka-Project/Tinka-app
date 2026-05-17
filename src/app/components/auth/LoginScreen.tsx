@@ -38,32 +38,7 @@ export function LoginScreen({ onLogin }: Props) {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col overflow-hidden">
       {/* PWA Install Banner */}
-      <AnimatePresence>
-        {showBanner && (
-          <motion.div
-            initial={{ y: -80, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -80, opacity: 0 }}
-            transition={{ type: 'spring', damping: 20 }}
-            className="bg-[#27272a] border-b border-border px-4 py-3 flex items-center gap-3 z-20 relative"
-          >
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #d946ef, #9333ea)' }}>
-              <span className="text-white text-sm font-bold">T</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-foreground">Añadir Tinka a inicio</p>
-              <p className="text-xs text-muted-foreground truncate">Acceso offline disponible</p>
-            </div>
-            <button
-              onClick={() => setShowBanner(false)}
-              className="text-muted-foreground flex-shrink-0 p-1"
-            >
-              <X size={16} />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
 
       <div className="flex-1 flex flex-col px-6 pt-8 pb-10">
         {/* Logo & Branding */}
@@ -129,25 +104,7 @@ export function LoginScreen({ onLogin }: Props) {
           </div>
 
           {/* Biometric Toggle */}
-          <div className="flex items-center justify-between px-4 py-3.5 rounded-2xl bg-card border border-border">
-            <div className="flex items-center gap-3">
-              <Fingerprint size={20} className="text-[#d946ef]" />
-              <div>
-                <p className="text-sm font-medium">Acceso Biométrico</p>
-                <p className="text-xs text-muted-foreground">Face ID / Huella dactilar</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setBiometric(v => !v)}
-              className={`w-12 h-6 rounded-full transition-colors relative ${biometric ? 'bg-[#d946ef]' : 'bg-border'}`}
-            >
-              <motion.div
-                animate={{ x: biometric ? 24 : 2 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                className="absolute top-1 w-4 h-4 rounded-full bg-white shadow"
-              />
-            </button>
-          </div>
+
         </motion.div>
 
         {/* Actions */}
@@ -196,7 +153,6 @@ export function LoginScreen({ onLogin }: Props) {
             }}
             className="w-full text-center text-xs text-muted-foreground py-2"
           >
-            Demo: maria@tinka.bo / tinka2026
           </button>
         </motion.div>
 

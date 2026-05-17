@@ -80,8 +80,8 @@ export const DEFAULT_CATEGORIES: ProductCategory[] = [
 ];
 
 const DEMO_USER: User = {
-  name: 'María',
-  email: 'maria@tinka.bo',
+  name: 'Hugo',
+  email: 'hugo@tinka.bo',
   tinkaScore: 78,
   monthlySalesGoal: 15000,
 };
