@@ -620,14 +620,11 @@ export function Dashboard({ onOpenSettings }: Props) {
 
               const pctOfBudget = cat.salesGoal > 0 ? (cat.total / cat.salesGoal) * 100 : 0;
               const showDashed = cat.salesGoal > 0 && pctOfBudget >= 60;
-              const exceededGoal = cat.salesGoal > 0 && pctOfBudget > 100;
 
-              // Tier-based luminous pastel color — cambia en vivo según % presupuesto
-              const tierColor = exceededGoal
-                ? '#f8b1bf'
-                : pctOfBudget >= 60
-                  ? '#f9b988'
-                  : '#cce868';
+              // El color de la barra es el color de la categoría (preferencia del
+              // emprendedor). El estado de "sobrepasaste el presupuesto" se comunica
+              // visualmente por la línea punteada cruzando la barra, no por el color.
+              const barColor = cat.color;
 
               // Alturas proporcionales al máximo global (egreso o presupuesto más alto)
               const rawBarPx = (cat.total / categoryBarsMax) * SLOT_HEIGHT;
@@ -662,30 +659,15 @@ export function Dashboard({ onOpenSettings }: Props) {
                     scrollSnapAlign: 'start',
                   }}
                 >
-                  {/* Dashed budget outline — animado: aparece/desaparece al cruzar 60%,
-                      crece/encoge al actualizar presupuesto. */}
-                  <AnimatePresence>
-                    {showDashed && (
-                      <motion.div
-                        key="dashed"
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: dashedHeightPx, opacity: 1 }}
-                        exit={{ opacity: 0, transition: { duration: 0.2 } }}
-                        transition={{ type: 'spring', stiffness: 140, damping: 22 }}
-                        className="absolute inset-x-0 bottom-0 rounded-2xl border-2 border-dashed pointer-events-none"
-                        style={{ borderColor: 'rgba(255,255,255,0.42)' }}
-                      />
-                    )}
-                  </AnimatePresence>
-
-                  {/* Filled glowing bar — altura y color de tier animados al instante
-                      cuando se registra un nuevo egreso o se cambia el presupuesto. */}
+                  {/* Filled glowing bar — se renderiza ANTES que la línea punteada para
+                      que ésta quede por encima y enmarque la barra incluso cuando la
+                      sobrepasa (caso egreso > presupuesto). */}
                   {cat.total > 0 && (
                     <motion.div
                       initial={{ height: 0 }}
                       animate={{
                         height: barHeightPx,
-                        backgroundColor: tierColor,
+                        backgroundColor: barColor,
                       }}
                       transition={{
                         height: { type: 'spring', stiffness: 140, damping: 20 },
@@ -693,7 +675,7 @@ export function Dashboard({ onOpenSettings }: Props) {
                       }}
                       className="absolute bottom-0 inset-x-0 rounded-2xl flex flex-col items-center justify-end pb-3 pt-2"
                       style={{
-                        boxShadow: `0 0 26px ${tierColor}99, 0 0 50px ${tierColor}44`,
+                        boxShadow: `0 0 26px ${barColor}99, 0 0 50px ${barColor}44`,
                         transition: 'box-shadow 0.45s ease',
                       }}
                     >
@@ -708,6 +690,22 @@ export function Dashboard({ onOpenSettings }: Props) {
                       )}
                     </motion.div>
                   )}
+
+                  {/* Dashed budget outline — encima de la barra para que el contorno
+                      sea visible aunque la barra rosa lo cubra al sobrepasar el límite. */}
+                  <AnimatePresence>
+                    {showDashed && (
+                      <motion.div
+                        key="dashed"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: dashedHeightPx, opacity: 1 }}
+                        exit={{ opacity: 0, transition: { duration: 0.2 } }}
+                        transition={{ type: 'spring', stiffness: 140, damping: 22 }}
+                        className="absolute inset-x-0 bottom-0 rounded-2xl border-2 border-dashed pointer-events-none z-10"
+                        style={{ borderColor: 'rgba(255,255,255,0.55)' }}
+                      />
+                    )}
+                  </AnimatePresence>
 
                   {/* Empty state placeholder when no spending yet */}
                   {cat.total === 0 && (
