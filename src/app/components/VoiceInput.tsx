@@ -94,9 +94,7 @@ export function VoiceInput({ onClose, onSaleDetected }: Props) {
               </div>
             </div>
 
-            <p className="text-white/70 text-sm text-center max-w-xs mb-10 italic">
-              "Venta de un televisor Samsung a 5.000 Bs por QR"
-            </p>
+           
 
             <div className="flex gap-6">
               <motion.button
