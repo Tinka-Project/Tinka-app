@@ -39,8 +39,8 @@ export function OnboardingNotifications({ onComplete }: Props) {
                 <Bell size={24} className="text-background" />
               </div>
               <div className="flex-1">
-                <div className="font-medium mb-1">SwiftBank</div>
-                <div className="text-sm text-muted-foreground mb-2">Tu pago de Bs 39.50 a Compra se ha procesado</div>
+                <div className="font-medium mb-1">Banco Fie</div>
+                <div className="text-sm text-muted-foreground mb-2">Tu pago de Bs 39.50 se ha procesado</div>
                 <div className="text-xs text-muted-foreground">09:41</div>
               </div>
             </motion.div>
@@ -63,9 +63,9 @@ export function OnboardingNotifications({ onComplete }: Props) {
                 <Bell size={24} className="text-background" />
               </div>
               <div className="flex-1">
-                <div className="font-medium mb-1">SwiftBank</div>
-                <div className="text-sm text-muted-foreground mb-2">Nueva transacción añadida Bs 39.50 en Compra</div>
-                <div className="text-xs text-muted-foreground">09:41</div>
+                <div className="font-medium mb-1">Banco Fie</div>
+                <div className="text-sm text-muted-foreground mb-2">Nueva transacción añadida</div>
+                <div className="text-xs text-muted-foreground">13:35</div>
               </div>
             </motion.div>
           </div>
