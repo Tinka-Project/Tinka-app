@@ -40,7 +40,8 @@ export function BankSyncCard() {
   const selectedCats = categories.filter(c => c.selected);
   const defaultCatId = selectedCats[0]?.id ?? '1';
 
-  // Simulate incoming bank events every ~12 seconds
+  // Simulate incoming bank events on a relaxed cadence so el usuario tiene tiempo
+  // de leer cada toast antes de que llegue el siguiente.
   useEffect(() => {
     const interval = setInterval(() => {
       const evt = SIMULATED_EVENTS[eventIdx.current % SIMULATED_EVENTS.length];
@@ -89,7 +90,7 @@ export function BankSyncCard() {
           },
         });
       }
-    }, 12000);
+    }, 35000);
 
     return () => clearInterval(interval);
   }, [addSale, defaultCatId]);

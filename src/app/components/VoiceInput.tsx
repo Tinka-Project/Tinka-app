@@ -20,19 +20,22 @@ export function VoiceInput({ onClose, onSaleDetected }: Props) {
   useEffect(() => {
     const listenTimer = setTimeout(() => {
       setIsListening(false);
-      setTranscription('Vendí un Samsung Galaxy A54 a 1800 Bs por QR en la tienda');
+      setTranscription('Venta de una laptop Lenovo a 7.000 Bs por transferencia');
 
       setTimeout(() => {
-        const techCat = selectedCats.find(c =>
-          c.name.toLowerCase().includes('cel') || c.name.toLowerCase().includes('tech') || c.name.toLowerCase().includes('sam')
+        // Buscar categoría coherente con "laptop" (Computadoras)
+        const laptopCat = selectedCats.find(c =>
+          c.name.toLowerCase().includes('comp') ||
+          c.name.toLowerCase().includes('laptop') ||
+          c.name.toLowerCase().includes('lap'),
         ) ?? selectedCats[0];
 
         onSaleDetected({
-          product: 'Samsung Galaxy A54',
-          amount: 1800,
-          paymentMethod: 'qr' as PaymentMethod,
+          product: 'Laptop Lenovo',
+          amount: 7000,
+          paymentMethod: 'transfer' as PaymentMethod,
           location: 'store' as SaleLocation,
-          categoryId: techCat?.id ?? defaultCategoryId,
+          categoryId: laptopCat?.id ?? defaultCategoryId,
         });
       }, 1000);
     }, 5000);
@@ -92,7 +95,7 @@ export function VoiceInput({ onClose, onSaleDetected }: Props) {
             </div>
 
             <p className="text-white/70 text-sm text-center max-w-xs mb-10 italic">
-              "Vendí un iPhone 15 a 4500 Bs por transferencia..."
+              "Venta de una laptop Lenovo de 7.000 Bs por transferencia..."
             </p>
 
             <div className="flex gap-6">

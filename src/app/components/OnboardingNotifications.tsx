@@ -13,7 +13,7 @@ export function OnboardingNotifications({ onComplete }: Props) {
         animate={{ opacity: 1, y: 0 }}
         className="mb-4"
       >
-        Añade automáticamente tus notificaciones bancarias a Arkive
+        Añade automáticamente tus notificaciones bancarias a Tinka
       </motion.h1>
 
       <div className="flex-1 flex items-center justify-center">
@@ -40,7 +40,7 @@ export function OnboardingNotifications({ onComplete }: Props) {
               </div>
               <div className="flex-1">
                 <div className="font-medium mb-1">SwiftBank</div>
-                <div className="text-sm text-muted-foreground mb-2">Tu pago de Bs 39.50 a McDonalds se ha procesado</div>
+                <div className="text-sm text-muted-foreground mb-2">Tu pago de Bs 39.50 a Compra se ha procesado</div>
                 <div className="text-xs text-muted-foreground">09:41</div>
               </div>
             </motion.div>
@@ -64,7 +64,7 @@ export function OnboardingNotifications({ onComplete }: Props) {
               </div>
               <div className="flex-1">
                 <div className="font-medium mb-1">SwiftBank</div>
-                <div className="text-sm text-muted-foreground mb-2">Nueva transacción añadida Bs 39.50 en McDonalds</div>
+                <div className="text-sm text-muted-foreground mb-2">Nueva transacción añadida Bs 39.50 en Compra</div>
                 <div className="text-xs text-muted-foreground">09:41</div>
               </div>
             </motion.div>

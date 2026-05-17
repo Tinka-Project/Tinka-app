@@ -61,7 +61,7 @@ export function OnChainAgentPanel({
 
 	const handleExportIdentity = () => {
 		const identityPayload = {
-			schema: 'Arkive.neural.identity.v1',
+			schema: 'Tinka.neural.identity.v1',
 			agentId,
 			profile,
 			evolutionLevel,
@@ -80,7 +80,7 @@ export function OnChainAgentPanel({
 		const url = URL.createObjectURL(blob);
 		const anchor = document.createElement('a');
 		anchor.href = url;
-		anchor.download = `Arkive-identity-${agentId.slice(0, 6)}.json`;
+		anchor.download = `Tinka-identity-${agentId.slice(0, 6)}.json`;
 		anchor.click();
 		URL.revokeObjectURL(url);
 	};

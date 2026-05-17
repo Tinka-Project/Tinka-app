@@ -36,7 +36,7 @@ export function LockScreenWidget({ categories, onAddTransaction }: Props) {
           <Lock size={20} className="text-[#ff9f43]" />
         </div>
         <div>
-          <div className="text-white font-medium">Arkive</div>
+          <div className="text-white font-medium">Tinka</div>
           <div className="text-sm text-white/60">Registro rápido</div>
         </div>
       </div>

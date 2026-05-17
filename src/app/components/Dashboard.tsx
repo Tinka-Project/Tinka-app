@@ -1,8 +1,8 @@
 import { useState, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import { Settings, ChevronDown, TrendingUp, TrendingDown, X, Plus, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
 import { useApp, Sale, PaymentMethod } from '../contexts/AppContext';
-import { AddTransaction, MovementType } from './AddTransaction';
+import { MovementType } from './AddTransaction';
 import { formatBs } from '../utils/currency';
 import { BankSyncCard } from './banksync/BankSyncCard';
 import { useOfflineDetection } from '../hooks/useOfflineDetection';
@@ -102,11 +102,13 @@ interface CatWithTotal {
 
 function CategoryModal({
   category,
+  availableCategories,
   onClose,
   onUpdateGoal,
   onRegisterMovement,
 }: {
-  category: CatWithTotal;
+  category: CatWithTotal | null;
+  availableCategories: CatWithTotal[];
   onClose: () => void;
   onUpdateGoal: (catId: string, newGoal: number) => void;
   onRegisterMovement: (
@@ -117,6 +119,8 @@ function CategoryModal({
     paymentMethod: PaymentMethod,
   ) => void;
 }) {
+  // Si no llega categoría preseleccionada (modo botón "+"), el usuario primero la elige.
+  const [picked, setPicked] = useState<CatWithTotal | null>(category);
   const [tab, setTab] = useState<'transaction' | 'goal'>('transaction');
   const [movementType, setMovementType] = useState<MovementType>('transaccion');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
@@ -127,10 +131,10 @@ function CategoryModal({
   const accentColor = isEntrada ? '#10b981' : '#ef4444';
 
   const handleSaveTransaction = () => {
-    if (!amount) return;
+    if (!amount || !picked) return;
     onRegisterMovement(
       movementType,
-      category.id,
+      picked.id,
       parseFloat(amount),
       description || (isEntrada ? 'Entrada' : 'Transacción'),
       paymentMethod,
@@ -138,7 +142,7 @@ function CategoryModal({
     toast.success(
       `${isEntrada ? '💰 Entrada registrada: +' : '💸 Transacción registrada: -'}${formatBs(parseFloat(amount))}`,
       {
-        description: `${category.emoji} ${category.name}${description ? ' · ' + description : ''}`,
+        description: `${picked.emoji} ${picked.name}${description ? ' · ' + description : ''}`,
         duration: 5000,
       },
     );
@@ -146,10 +150,10 @@ function CategoryModal({
   };
 
   const handleSaveGoal = () => {
-    if (!amount) return;
-    onUpdateGoal(category.id, parseFloat(amount));
+    if (!amount || !picked) return;
+    onUpdateGoal(picked.id, parseFloat(amount));
     toast.success(`🎯 Presupuesto actualizado: ${formatBs(parseFloat(amount))}`, {
-      description: `${category.emoji} ${category.name}`,
+      description: `${picked.emoji} ${picked.name}`,
       duration: 5000,
     });
     onClose();
@@ -183,24 +187,58 @@ function CategoryModal({
 
         <div className="flex items-center justify-between px-5 pt-2 pb-4">
           <div className="flex items-center gap-3">
-            <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
-              style={{ backgroundColor: category.color + '22' }}
-            >
-              {category.emoji}
-            </div>
-            <div>
-              <h3 className="font-semibold">{category.name}</h3>
-              <p className="text-xs text-muted-foreground">
-                Meta: {formatBs(category.salesGoal)} · Vendido: {formatBs(category.total)}
-              </p>
-            </div>
+            {picked ? (
+              <>
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl"
+                  style={{ backgroundColor: picked.color + '22' }}
+                >
+                  {picked.emoji}
+                </div>
+                <div>
+                  <h3 className="font-semibold">{picked.name}</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Presupuesto: {formatBs(picked.salesGoal)} · Gastado: {formatBs(picked.total)}
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div>
+                <h3 className="font-semibold">Nuevo movimiento</h3>
+                <p className="text-xs text-muted-foreground">Elige una categoría</p>
+              </div>
+            )}
           </div>
           <button onClick={onClose} className="text-muted-foreground p-1">
             <X size={20} />
           </button>
         </div>
 
+        {/* Category picker — sólo cuando no hay categoría preseleccionada */}
+        {!picked && (
+          <div className="px-5 pb-5">
+            <div className="grid grid-cols-4 gap-2">
+              {availableCategories.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => setPicked(c)}
+                  className="flex flex-col items-center justify-center gap-1 py-3 rounded-2xl border-2 transition-all"
+                  style={{
+                    borderColor: 'transparent',
+                    backgroundColor: c.color + '14',
+                  }}
+                >
+                  <span className="text-2xl leading-none">{c.emoji}</span>
+                  <span className="text-[10px] text-center text-muted-foreground leading-tight px-1 truncate w-full">
+                    {c.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {picked && (
         <div className="flex gap-2 px-5 mb-5">
           <button
             onClick={() => setTab('transaction')}
@@ -216,14 +254,16 @@ function CategoryModal({
             onClick={() => setTab('goal')}
             className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
             style={{
-              backgroundColor: tab === 'goal' ? category.color : '#27272a',
+              backgroundColor: tab === 'goal' ? picked.color : '#27272a',
               color: tab === 'goal' ? 'white' : '#a1a1aa',
             }}
           >
             🎯 Presupuesto
           </button>
         </div>
+        )}
 
+        {picked && (
         <div className="px-5 pb-8 space-y-4">
           {/* Ingreso / Egreso toggle (sólo en pestaña de transacción) */}
           {tab === 'transaction' && (
@@ -321,7 +361,7 @@ function CategoryModal({
             style={{
               background: tab === 'transaction'
                 ? `linear-gradient(135deg, ${accentColor}, ${isEntrada ? '#059669' : '#dc2626'})`
-                : `linear-gradient(135deg, ${category.color}, #9333ea)`,
+                : `linear-gradient(135deg, ${picked.color}, #9333ea)`,
             }}
           >
             {tab === 'transaction'
@@ -329,6 +369,7 @@ function CategoryModal({
               : 'Actualizar Presupuesto'}
           </motion.button>
         </div>
+        )}
       </motion.div>
     </motion.div>
   );
@@ -341,7 +382,7 @@ export function Dashboard({ onOpenSettings }: Props) {
   const [period, setPeriod] = useState<Period>('today');
   const [isPeriodOpen, setIsPeriodOpen] = useState(false);
   const [longPressedCat, setLongPressedCat] = useState<CatWithTotal | null>(null);
-  const [showAddTransaction, setShowAddTransaction] = useState(false);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useOfflineDetection();
 
@@ -366,7 +407,8 @@ export function Dashboard({ onOpenSettings }: Props) {
         const total = catExp.reduce((s, e) => s + e.amount, 0);
         return { ...cat, total, count: catExp.length };
       })
-      .filter(c => c.total > 0 || selectedCategories.length <= 4)
+      // Mostrar TODAS las categorías seleccionadas como columnas (scroll horizontal).
+      // Las que aún no tengan egresos muestran su placeholder vacío con el emoji.
       .sort((a, b) => b.total - a.total);
   }, [selectedCategories, periodExpenses]);
 
@@ -509,7 +551,7 @@ export function Dashboard({ onOpenSettings }: Props) {
           </AnimatePresence>
         </div>
 
-        {/* Total Ventas (Entradas) */}
+        {/* Total Ventas (Entradas) — pulsa cuando entra una nueva venta */}
         <motion.div
           key={`rev-${period}`}
           initial={{ opacity: 0, y: 10 }}
@@ -518,9 +560,15 @@ export function Dashboard({ onOpenSettings }: Props) {
         >
           <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">Total Ventas</p>
           <div className="flex items-end gap-3">
-            <span className="text-5xl font-bold text-foreground leading-none">
+            <motion.span
+              key={totalRevenue}
+              initial={{ scale: 1.08, color: '#10b981' }}
+              animate={{ scale: 1, color: '#fafafa' }}
+              transition={{ duration: 0.45, ease: 'easeOut' }}
+              className="text-5xl font-bold leading-none origin-left"
+            >
               {formatBs(totalRevenue)}
-            </span>
+            </motion.span>
             {prevRevenue > 0 && (
               <div className={`flex items-center gap-1 mb-1 text-sm font-medium ${isUp ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
                 {isUp ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
@@ -538,24 +586,25 @@ export function Dashboard({ onOpenSettings }: Props) {
       {/* ── Egresos por categoría (Barras presupuesto) ───────────────────────────────── */}
       {expensesByCategory.length > 0 && (
         <div className="mb-6 relative">
-          {/* Plus button (alternative to long-press category) */}
+          {/* Plus button (alternative to long-press category) — minimal icon, no
+              background pill so it reads as a quick affordance rather than a FAB. */}
           <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={() => setShowAddTransaction(true)}
+            whileTap={{ scale: 0.85 }}
+            onClick={() => setShowQuickAdd(true)}
             aria-label="Registrar movimiento"
-            className="absolute top-3 right-7 z-10 w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
-            style={{ background: 'linear-gradient(135deg, #d946ef 0%, #9333ea 100%)' }}
+            className="absolute top-3 right-4 z-10 w-9 h-9 flex items-center justify-center"
           >
-            <Plus size={20} className="text-white" strokeWidth={2.5} />
+            <Plus size={26} className="text-white" strokeWidth={2.4} />
           </motion.button>
 
-          {/* Outer dark canvas: extra padding (top/bottom/sides) so the bar glow can bleed
-              over the black background without being clipped at the edges. The bars keep
-              their original height; only the surrounding frame grows. */}
+          {/* Outer dark canvas: full-bleed horizontally (sin margen lateral) para que
+              quede al tope con los bordes del celular. Mantiene el padding interno
+              generoso para que el glow de las barras no se vea cortado. */}
           <div
-            className="rounded-3xl pt-8 pb-7 px-7 mx-5"
+            className="rounded-none pt-10 pb-7 px-7"
             style={{ backgroundColor: '#0a0a0a' }}
           >
+            <LayoutGroup>
             <div
               className="flex gap-3 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden"
               style={{
@@ -565,7 +614,7 @@ export function Dashboard({ onOpenSettings }: Props) {
                 scrollSnapType: 'x proximity',
               }}
             >
-            {expensesByCategory.map((cat, index) => {
+            {expensesByCategory.map(cat => {
               const SLOT_HEIGHT = 240;
               const MIN_BAR_HEIGHT = 78;
 
@@ -573,14 +622,14 @@ export function Dashboard({ onOpenSettings }: Props) {
               const showDashed = cat.salesGoal > 0 && pctOfBudget >= 60;
               const exceededGoal = cat.salesGoal > 0 && pctOfBudget > 100;
 
-              // Tier-based luminous pastel color
+              // Tier-based luminous pastel color — cambia en vivo según % presupuesto
               const tierColor = exceededGoal
                 ? '#f8b1bf'
                 : pctOfBudget >= 60
                   ? '#f9b988'
                   : '#cce868';
 
-              // Bar height proportional to spending across all visible categories
+              // Alturas proporcionales al máximo global (egreso o presupuesto más alto)
               const rawBarPx = (cat.total / categoryBarsMax) * SLOT_HEIGHT;
               const barHeightPx = cat.total > 0 ? Math.max(MIN_BAR_HEIGHT, rawBarPx) : 0;
               const dashedHeightPx = Math.min(
@@ -591,9 +640,14 @@ export function Dashboard({ onOpenSettings }: Props) {
               return (
                 <motion.div
                   key={cat.id}
+                  layout
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.07 }}
+                  transition={{
+                    layout: { type: 'spring', stiffness: 220, damping: 26 },
+                    opacity: { duration: 0.3 },
+                    y: { duration: 0.3 },
+                  }}
                   onMouseDown={() => handlePressStart(cat)}
                   onMouseUp={handlePressEnd}
                   onMouseLeave={handlePressEnd}
@@ -608,31 +662,39 @@ export function Dashboard({ onOpenSettings }: Props) {
                     scrollSnapAlign: 'start',
                   }}
                 >
-                  {/* Dashed budget outline — visible only when at or above 60% of budget */}
-                  {showDashed && (
-                    <div
-                      className="absolute inset-x-0 bottom-0 rounded-2xl border-2 border-dashed pointer-events-none"
-                      style={{
-                        height: dashedHeightPx,
-                        borderColor: 'rgba(255,255,255,0.42)',
-                      }}
-                    />
-                  )}
+                  {/* Dashed budget outline — animado: aparece/desaparece al cruzar 60%,
+                      crece/encoge al actualizar presupuesto. */}
+                  <AnimatePresence>
+                    {showDashed && (
+                      <motion.div
+                        key="dashed"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: dashedHeightPx, opacity: 1 }}
+                        exit={{ opacity: 0, transition: { duration: 0.2 } }}
+                        transition={{ type: 'spring', stiffness: 140, damping: 22 }}
+                        className="absolute inset-x-0 bottom-0 rounded-2xl border-2 border-dashed pointer-events-none"
+                        style={{ borderColor: 'rgba(255,255,255,0.42)' }}
+                      />
+                    )}
+                  </AnimatePresence>
 
-                  {/* Filled glowing bar with emoji + amount + percent inside */}
+                  {/* Filled glowing bar — altura y color de tier animados al instante
+                      cuando se registra un nuevo egreso o se cambia el presupuesto. */}
                   {cat.total > 0 && (
                     <motion.div
                       initial={{ height: 0 }}
-                      animate={{ height: barHeightPx }}
+                      animate={{
+                        height: barHeightPx,
+                        backgroundColor: tierColor,
+                      }}
                       transition={{
-                        duration: 0.9,
-                        delay: index * 0.07 + 0.15,
-                        ease: [0.34, 1.2, 0.64, 1],
+                        height: { type: 'spring', stiffness: 140, damping: 20 },
+                        backgroundColor: { duration: 0.45, ease: 'easeOut' },
                       }}
                       className="absolute bottom-0 inset-x-0 rounded-2xl flex flex-col items-center justify-end pb-3 pt-2"
                       style={{
-                        backgroundColor: tierColor,
                         boxShadow: `0 0 26px ${tierColor}99, 0 0 50px ${tierColor}44`,
+                        transition: 'box-shadow 0.45s ease',
                       }}
                     >
                       <span className="text-2xl leading-none mb-1">{cat.emoji}</span>
@@ -658,6 +720,7 @@ export function Dashboard({ onOpenSettings }: Props) {
               );
             })}
             </div>
+            </LayoutGroup>
           </div>
         </div>
       )}
@@ -716,15 +779,25 @@ export function Dashboard({ onOpenSettings }: Props) {
             </span>
           </div>
           <div className="flex items-end gap-2">
-            <span
-              className="text-3xl font-bold leading-none"
+            <motion.span
+              key={montoDisponibleGeneral}
+              initial={{ scale: 1.1 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 18 }}
+              className="text-3xl font-bold leading-none origin-left"
               style={{ color: montoDisponibleGeneral >= 0 ? '#10b981' : '#ef4444' }}
             >
               {formatBs(Math.max(0, montoDisponibleGeneral))}
-            </span>
-            <span className="text-xs text-muted-foreground mb-1">
+            </motion.span>
+            <motion.span
+              key={`bud-${totalBudget}`}
+              initial={{ opacity: 0.4 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3 }}
+              className="text-xs text-muted-foreground mb-1"
+            >
               de {formatBs(totalBudget)}
-            </span>
+            </motion.span>
           </div>
           {montoDisponibleGeneral < 0 && (
             <p className="text-[11px] text-[#ef4444] mt-1">
@@ -732,11 +805,15 @@ export function Dashboard({ onOpenSettings }: Props) {
             </p>
           )}
           <div className="mt-3 h-1.5 rounded-full overflow-hidden bg-white/10">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{
+            <motion.div
+              className="h-full rounded-full"
+              animate={{
                 width: `${disponiblePct}%`,
                 backgroundColor: montoDisponibleGeneral >= 0 ? '#10b981' : '#ef4444',
+              }}
+              transition={{
+                width: { type: 'spring', stiffness: 140, damping: 22 },
+                backgroundColor: { duration: 0.4, ease: 'easeOut' },
               }}
             />
           </div>
@@ -809,33 +886,20 @@ export function Dashboard({ onOpenSettings }: Props) {
         </div>
       </div>
 
-      {/* Category long-press modal */}
+      {/* Bottom-sheet modal compartido:
+          - Long-press 2s en una categoría → category preseleccionada.
+          - Botón "+" del header de barras → category = null (muestra picker). */}
       <AnimatePresence>
-        {longPressedCat && (
+        {(longPressedCat || showQuickAdd) && (
           <CategoryModal
             category={longPressedCat}
-            onClose={() => setLongPressedCat(null)}
+            availableCategories={expensesByCategory}
+            onClose={() => {
+              setLongPressedCat(null);
+              setShowQuickAdd(false);
+            }}
             onUpdateGoal={handleUpdateGoal}
             onRegisterMovement={handleRegisterMovement}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Modal AddTransaction — alternativa al long-press de categoría */}
-      <AnimatePresence>
-        {showAddTransaction && (
-          <AddTransaction
-            categories={selectedCategories}
-            selectedCategoryId={null}
-            onClose={() => setShowAddTransaction(false)}
-            onAddTransaction={(type, categoryId, movAmount, movDesc, payment) => {
-              handleRegisterMovement(type, categoryId, movAmount, movDesc, payment);
-              toast.success(
-                `${type === 'entrada' ? '💰 Entrada registrada: +' : '💸 Transacción registrada: -'}${formatBs(movAmount)}`,
-                { duration: 4000 },
-              );
-              setShowAddTransaction(false);
-            }}
           />
         )}
       </AnimatePresence>
