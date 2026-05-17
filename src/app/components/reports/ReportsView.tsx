@@ -4,6 +4,9 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar, CartesianGrid, LabelList,
 } from 'recharts';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
 import { useApp, Sale } from '../../contexts/AppContext';
 import { formatBs } from '../../utils/currency';
 
@@ -38,6 +41,41 @@ function groupByDay(sales: Sale[], days: number) {
     result.push({ date: label, total });
   }
   return result;
+}
+
+function getPeriodLabel(period: Period) {
+  return period === 'week' ? 'Esta semana' : 'Este mes';
+}
+
+function getPaymentLabel(method: string) {
+  return PAYMENT_LABELS[method] ?? method;
+}
+
+function getFileDateSuffix() {
+  const now = new Date();
+  return now.toISOString().slice(0, 10);
+}
+
+function downloadCsv(filename: string, rows: Record<string, string | number>[]) {
+  const headers = Object.keys(rows[0] ?? {});
+  const csv = [
+    headers.join(','),
+    ...rows.map(row =>
+      headers.map(h => {
+        const value = row[h] ?? '';
+        const text = String(value).replace(/"/g, '""');
+        return `"${text}"`;
+      }).join(',')
+    ),
+  ].join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function CustomTooltip({ active, payload, label }: any) {
@@ -96,25 +134,230 @@ export function ReportsView() {
     }));
   }, [filteredSales]);
 
-  // Show ALL selected categories (even those with 0 sales)
   const categoryData = useMemo(() => {
     const selected = categories.filter(c => c.selected);
     return selected
       .map(cat => {
-        const total = filteredSales.filter(s => s.categoryId === cat.id).reduce((s, t) => s + t.amount, 0);
-        return { name: cat.name, emoji: cat.emoji, total, color: cat.color };
+        const total = filteredSales
+          .filter(s => s.categoryId === cat.id)
+          .reduce((s, t) => s + t.amount, 0);
+        return { name: cat.name, emoji: cat.emoji, total, color: cat.color, id: cat.id };
       })
       .sort((a, b) => b.total - a.total);
   }, [filteredSales, categories]);
 
   const displayedSales = showAll ? filteredSales : filteredSales.slice(0, INITIAL_SHOWN);
 
+  const handleDownloadCsv = () => {
+    const rows = filteredSales.map(sale => {
+      const cat = categories.find(c => c.id === sale.categoryId);
+      const date = new Date(sale.date);
+
+      return {
+        Fecha: date.toLocaleDateString('es-BO', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        Producto: sale.product,
+        Categoria: cat?.name ?? 'Sin categoría',
+        Monto: formatBs(sale.amount),
+        Metodo: getPaymentLabel(sale.paymentMethod),
+        AutoDetectado: sale.autoDetected ? 'Sí' : 'No',
+      };
+    });
+
+    downloadCsv(`reporte-ventas-${getFileDateSuffix()}.csv`, rows);
+  };
+
+  const handleDownloadPdf = () => {
+    const doc = new jsPDF();
+    const periodLabel = getPeriodLabel(period);
+
+    let y = 18;
+
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Reporte de Ventas', 14, y);
+    y += 8;
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Período: ${periodLabel}`, 14, y);
+    y += 6;
+    doc.text(`Generado el: ${new Date().toLocaleString('es-BO')}`, 14, y);
+    y += 10;
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Resumen', 'Valor']],
+      body: [
+        ['Total recaudado', formatBs(totalRevenue)],
+        ['QR', formatBs(qrTotal)],
+        ['Promedio diario', formatBs(avgPerDay)],
+        ['Venta mayor', formatBs(topSale)],
+      ],
+      styles: {
+        fontSize: 9,
+        cellPadding: 3,
+      },
+      headStyles: {
+        fillColor: [217, 70, 239],
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    y = (doc as any).lastAutoTable.finalY + 10;
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Día', 'Total']],
+      body: lineData.map(item => [item.date, formatBs(item.total)]),
+      styles: {
+        fontSize: 9,
+        cellPadding: 3,
+      },
+      headStyles: {
+        fillColor: [217, 70, 239],
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    y = (doc as any).lastAutoTable.finalY + 10;
+
+    if (paymentData.length > 0) {
+      autoTable(doc, {
+        startY: y,
+        head: [['Método de pago', 'Monto', 'Porcentaje']],
+        body: paymentData.map(item => {
+          const pct = totalRevenue > 0 ? `${Math.round((item.value / totalRevenue) * 100)}%` : '0%';
+          return [item.name, formatBs(item.value), pct];
+        }),
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+        },
+        headStyles: {
+          fillColor: [217, 70, 239],
+        },
+        margin: { left: 14, right: 14 },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    if (categoryData.length > 0) {
+      autoTable(doc, {
+        startY: y,
+        head: [['Categoría', 'Total']],
+        body: categoryData.map(cat => [`${cat.emoji} ${cat.name}`, formatBs(cat.total)]),
+        styles: {
+          fontSize: 9,
+          cellPadding: 3,
+        },
+        headStyles: {
+          fillColor: [217, 70, 239],
+        },
+        margin: { left: 14, right: 14 },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Fecha', 'Producto', 'Categoría', 'Monto', 'Método', 'Auto']],
+      body: filteredSales.map(sale => {
+        const cat = categories.find(c => c.id === sale.categoryId);
+        const date = new Date(sale.date);
+
+        return [
+          date.toLocaleDateString('es-BO', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          sale.product,
+          cat?.name ?? 'Sin categoría',
+          formatBs(sale.amount),
+          getPaymentLabel(sale.paymentMethod),
+          sale.autoDetected ? 'Sí' : 'No',
+        ];
+      }),
+      styles: {
+        fontSize: 8,
+        cellPadding: 2.5,
+      },
+      headStyles: {
+        fillColor: [217, 70, 239],
+      },
+      margin: { left: 14, right: 14 },
+      pageBreak: 'auto',
+    });
+
+    doc.save(`reporte-ventas-${getFileDateSuffix()}.pdf`);
+  };
+
   return (
     <div className="flex flex-col bg-background min-h-screen pb-28 overflow-y-auto">
       {/* Header */}
-      <div className="px-5 pt-12 pb-6">
+      <div className="px-5 pt-12 pb-4">
         <h2 className="text-2xl font-bold mb-1">Reportes</h2>
         <p className="text-sm text-muted-foreground">Análisis de tus ventas</p>
+      </div>
+
+      {/* Export buttons */}
+      <div className="px-5 mb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold">Exportar Reporte</p>
+            <p className="text-xs text-muted-foreground">
+              Descarga tus ventas en PDF o CSV
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleDownloadCsv}
+              className="
+                flex items-center gap-2
+                px-4 py-2.5
+                rounded-xl
+                bg-emerald-500/15
+                border border-emerald-500/25
+                text-emerald-400
+                text-sm font-medium
+                active:scale-[0.98]
+                transition-all
+              "
+            >
+              <span className="text-base">📄</span>
+              CSV
+            </button>
+
+            <button
+              onClick={handleDownloadPdf}
+              className="
+                flex items-center gap-2
+                px-4 py-2.5
+                rounded-xl
+                bg-fuchsia-500/15
+                border border-fuchsia-500/25
+                text-fuchsia-400
+                text-sm font-medium
+                active:scale-[0.98]
+                transition-all
+              "
+            >
+              <span className="text-base">⬇️</span>
+              PDF
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Period toggle */}
@@ -272,7 +515,7 @@ export function ReportsView() {
                 <Tooltip content={<BarTooltip />} cursor={{ fill: '#ffffff08', radius: 8 }} />
                 <Bar dataKey="total" radius={[8, 8, 0, 0]} maxBarSize={44}>
                   {categoryData.map(entry => (
-                    <Cell key={entry.name} fill={entry.color} />
+                    <Cell key={entry.id} fill={entry.color} />
                   ))}
                   <LabelList
                     dataKey="total"
