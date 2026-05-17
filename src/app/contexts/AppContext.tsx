@@ -14,12 +14,24 @@ export interface Sale {
   autoDetected?: boolean;
 }
 
+// Egreso / Transacción: consume el presupuesto de una categoría
+export interface Expense {
+  id: string;
+  description: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  categoryId: string;
+  date: string;
+}
+
 export interface ProductCategory {
   id: string;
   name: string;
   emoji: string;
   color: string;
   selected: boolean;
+  // Límite mensual de gasto/inversión para esta categoría (presupuesto de egresos).
+  // Se sigue llamando salesGoal por compatibilidad con consumidores existentes.
   salesGoal: number;
 }
 
@@ -33,11 +45,13 @@ export interface User {
 interface AppContextValue {
   user: User | null;
   isLoggedIn: boolean;
-  sales: Sale[];
+  sales: Sale[];           // Entradas (ingresos)
+  expenses: Expense[];     // Transacciones (egresos)
   categories: ProductCategory[];
   login: (email: string) => void;
   logout: () => void;
   addSale: (sale: Omit<Sale, 'id' | 'date'>) => void;
+  addExpense: (expense: Omit<Expense, 'id' | 'date'>) => void;
   setCategories: (cats: ProductCategory[]) => void;
 }
 
@@ -71,6 +85,22 @@ function daysAgo(n: number): string {
   d.setDate(d.getDate() - n);
   d.setHours(Math.floor(8 + Math.random() * 10), Math.floor(Math.random() * 59));
   return d.toISOString();
+}
+
+function buildMockExpenses(cats: ProductCategory[]): Expense[] {
+  const celId = cats.find(c => c.name === 'Celulares')?.id ?? cats[0]?.id ?? '1';
+  const accId = cats.find(c => c.name === 'Accesorios')?.id ?? cats[1]?.id ?? '2';
+  const repId = cats.find(c => c.name === 'Reparación TI')?.id ?? cats[2]?.id ?? '3';
+
+  return [
+    { id: 'e1', description: 'Compra stock Samsung A54 (x2)', amount: 2200, paymentMethod: 'transfer', categoryId: celId, date: daysAgo(0) },
+    { id: 'e2', description: 'Cargadores y cables al por mayor', amount: 380,  paymentMethod: 'cash',     categoryId: accId, date: daysAgo(0) },
+    { id: 'e3', description: 'Pantallas iPhone (repuestos)',    amount: 1450, paymentMethod: 'transfer', categoryId: repId, date: daysAgo(1) },
+    { id: 'e4', description: 'Audífonos JBL (lote)',            amount: 650,  paymentMethod: 'cash',     categoryId: accId, date: daysAgo(2) },
+    { id: 'e5', description: 'Repuestos placas madre',          amount: 980,  paymentMethod: 'transfer', categoryId: repId, date: daysAgo(3) },
+    { id: 'e6', description: 'Xiaomi Redmi mayorista (x3)',     amount: 3200, paymentMethod: 'transfer', categoryId: celId, date: daysAgo(5) },
+    { id: 'e7', description: 'Stock fundas y vidrios',          amount: 420,  paymentMethod: 'cash',     categoryId: accId, date: daysAgo(8) },
+  ];
 }
 
 function buildMockSales(cats: ProductCategory[]): Sale[] {
@@ -116,6 +146,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>(DEFAULT_CATEGORIES);
 
   useEffect(() => {
@@ -123,7 +154,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (selected.length > 0 && sales.length === 0) {
       setSales(buildMockSales(selected));
     }
-  }, [categories, sales.length]);
+    if (selected.length > 0 && expenses.length === 0) {
+      setExpenses(buildMockExpenses(selected));
+    }
+  }, [categories, sales.length, expenses.length]);
 
   const login = (email: string) => {
     setUser({ ...DEMO_USER, email });
@@ -134,6 +168,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setIsLoggedIn(false);
     setSales([]);
+    setExpenses([]);
   };
 
   const addSale = (saleData: Omit<Sale, 'id' | 'date'>) => {
@@ -146,8 +181,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUser(prev => prev ? { ...prev, tinkaScore: Math.min(100, prev.tinkaScore + 1) } : prev);
   };
 
+  const addExpense = (expenseData: Omit<Expense, 'id' | 'date'>) => {
+    const newExpense: Expense = {
+      ...expenseData,
+      id: `e_${Date.now()}`,
+      date: new Date().toISOString(),
+    };
+    setExpenses(prev => [newExpense, ...prev]);
+  };
+
   return (
-    <AppContext.Provider value={{ user, isLoggedIn, sales, categories, login, logout, addSale, setCategories }}>
+    <AppContext.Provider
+      value={{
+        user,
+        isLoggedIn,
+        sales,
+        expenses,
+        categories,
+        login,
+        logout,
+        addSale,
+        addExpense,
+        setCategories,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );

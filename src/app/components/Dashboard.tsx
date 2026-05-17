@@ -1,7 +1,8 @@
 import { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Settings, ChevronDown, TrendingUp, TrendingDown, X } from 'lucide-react';
-import { useApp, Sale } from '../contexts/AppContext';
+import { Settings, ChevronDown, TrendingUp, TrendingDown, X, Plus, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import { useApp, Sale, PaymentMethod } from '../contexts/AppContext';
+import { AddTransaction, MovementType } from './AddTransaction';
 import { formatBs } from '../utils/currency';
 import { BankSyncCard } from './banksync/BankSyncCard';
 import { useOfflineDetection } from '../hooks/useOfflineDetection';
@@ -51,10 +52,16 @@ function isThisMonth(dateStr: string) {
   return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
 }
 
-function filterByPeriod(sales: Sale[], period: Period) {
-  if (period === 'today') return sales.filter(s => isToday(s.date));
-  if (period === 'week') return sales.filter(s => isThisWeek(s.date));
-  return sales.filter(s => isThisMonth(s.date));
+function filterByPeriod<T extends { date: string }>(items: T[], period: Period): T[] {
+  if (period === 'today') return items.filter(s => isToday(s.date));
+  if (period === 'week') return items.filter(s => isThisWeek(s.date));
+  return items.filter(s => isThisMonth(s.date));
+}
+
+function formatCompactBs(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}K`;
+  return n.toFixed(0);
 }
 
 function filterByPrevPeriod(sales: Sale[], period: Period) {
@@ -97,21 +104,44 @@ function CategoryModal({
   category,
   onClose,
   onUpdateGoal,
+  onRegisterMovement,
 }: {
   category: CatWithTotal;
   onClose: () => void;
   onUpdateGoal: (catId: string, newGoal: number) => void;
+  onRegisterMovement: (
+    type: MovementType,
+    categoryId: string,
+    amount: number,
+    description: string,
+    paymentMethod: PaymentMethod,
+  ) => void;
 }) {
-  const [tab, setTab] = useState<'expense' | 'goal'>('expense');
+  const [tab, setTab] = useState<'transaction' | 'goal'>('transaction');
+  const [movementType, setMovementType] = useState<MovementType>('transaccion');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
 
-  const handleSaveExpense = () => {
+  const isEntrada = movementType === 'entrada';
+  const accentColor = isEntrada ? '#10b981' : '#ef4444';
+
+  const handleSaveTransaction = () => {
     if (!amount) return;
-    toast.success(`💸 Gasto registrado: -${formatBs(parseFloat(amount))}`, {
-      description: `${category.emoji} ${category.name}${description ? ' · ' + description : ''}`,
-      duration: 7000,
-    });
+    onRegisterMovement(
+      movementType,
+      category.id,
+      parseFloat(amount),
+      description || (isEntrada ? 'Entrada' : 'Transacción'),
+      paymentMethod,
+    );
+    toast.success(
+      `${isEntrada ? '💰 Entrada registrada: +' : '💸 Transacción registrada: -'}${formatBs(parseFloat(amount))}`,
+      {
+        description: `${category.emoji} ${category.name}${description ? ' · ' + description : ''}`,
+        duration: 5000,
+      },
+    );
     onClose();
   };
 
@@ -124,6 +154,13 @@ function CategoryModal({
     });
     onClose();
   };
+
+  const PAYMENT_OPTS: { id: PaymentMethod; icon: string; label: string }[] = [
+    { id: 'cash',     icon: '💵', label: 'Efectivo' },
+    { id: 'qr',       icon: '📱', label: 'QR' },
+    { id: 'transfer', icon: '🏦', label: 'Transfer.' },
+    { id: 'card',     icon: '💳', label: 'Tarjeta' },
+  ];
 
   return (
     <motion.div
@@ -166,14 +203,14 @@ function CategoryModal({
 
         <div className="flex gap-2 px-5 mb-5">
           <button
-            onClick={() => setTab('expense')}
+            onClick={() => setTab('transaction')}
             className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
             style={{
-              backgroundColor: tab === 'expense' ? '#ef4444' : '#27272a',
-              color: tab === 'expense' ? 'white' : '#a1a1aa',
+              backgroundColor: tab === 'transaction' ? accentColor : '#27272a',
+              color: tab === 'transaction' ? 'white' : '#a1a1aa',
             }}
           >
-            💸 Gasto
+            💸 Transacción
           </button>
           <button
             onClick={() => setTab('goal')}
@@ -188,6 +225,36 @@ function CategoryModal({
         </div>
 
         <div className="px-5 pb-8 space-y-4">
+          {/* Ingreso / Egreso toggle (sólo en pestaña de transacción) */}
+          {tab === 'transaction' && (
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setMovementType('entrada')}
+                className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium border-2 transition-all"
+                style={{
+                  borderColor: isEntrada ? '#10b981' : 'transparent',
+                  backgroundColor: isEntrada ? '#10b9811f' : '#27272a',
+                  color: isEntrada ? '#10b981' : '#a1a1aa',
+                }}
+              >
+                <ArrowDownCircle size={16} />
+                Ingreso
+              </button>
+              <button
+                onClick={() => setMovementType('transaccion')}
+                className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium border-2 transition-all"
+                style={{
+                  borderColor: !isEntrada ? '#ef4444' : 'transparent',
+                  backgroundColor: !isEntrada ? '#ef44441f' : '#27272a',
+                  color: !isEntrada ? '#ef4444' : '#a1a1aa',
+                }}
+              >
+                <ArrowUpCircle size={16} />
+                Egreso
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-[#27272a] border border-border">
             <span className="text-muted-foreground text-sm">Bs.</span>
             <input
@@ -200,18 +267,42 @@ function CategoryModal({
             />
           </div>
 
-          {tab === 'expense' && (
-            <input
-              type="text"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="Descripción (opcional)"
-              className="w-full px-4 py-3 rounded-2xl bg-[#27272a] border border-border text-foreground text-sm outline-none focus:border-[#d946ef]"
-            />
+          {tab === 'transaction' && (
+            <>
+              <input
+                type="text"
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                placeholder="Descripción (opcional)"
+                className="w-full px-4 py-3 rounded-2xl bg-[#27272a] border border-border text-foreground text-sm outline-none focus:border-[#d946ef]"
+              />
+
+              {/* Método de pago */}
+              <div className="grid grid-cols-4 gap-2">
+                {PAYMENT_OPTS.map(opt => {
+                  const sel = paymentMethod === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => setPaymentMethod(opt.id)}
+                      className="flex flex-col items-center gap-0.5 py-2 rounded-xl border-2 text-[11px] font-medium transition-all"
+                      style={{
+                        borderColor: sel ? accentColor : 'transparent',
+                        backgroundColor: sel ? accentColor + '1f' : '#27272a',
+                        color: sel ? accentColor : '#a1a1aa',
+                      }}
+                    >
+                      <span className="text-base leading-none">{opt.icon}</span>
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           )}
 
           <div className="grid grid-cols-4 gap-2">
-            {(tab === 'expense' ? [100, 300, 500, 1000] : [1000, 2000, 3000, 5000]).map(v => (
+            {(tab === 'transaction' ? [100, 300, 500, 1000] : [1000, 2000, 3000, 5000]).map(v => (
               <button
                 key={v}
                 onClick={() => setAmount(v.toString())}
@@ -224,16 +315,18 @@ function CategoryModal({
 
           <motion.button
             whileTap={{ scale: 0.97 }}
-            onClick={tab === 'expense' ? handleSaveExpense : handleSaveGoal}
+            onClick={tab === 'transaction' ? handleSaveTransaction : handleSaveGoal}
             disabled={!amount}
             className="w-full py-4 rounded-2xl font-semibold text-white disabled:opacity-40"
             style={{
-              background: tab === 'expense'
-                ? 'linear-gradient(135deg, #ef4444, #dc2626)'
+              background: tab === 'transaction'
+                ? `linear-gradient(135deg, ${accentColor}, ${isEntrada ? '#059669' : '#dc2626'})`
                 : `linear-gradient(135deg, ${category.color}, #9333ea)`,
             }}
           >
-            {tab === 'expense' ? 'Registrar Gasto' : 'Actualizar Presupuesto'}
+            {tab === 'transaction'
+              ? (isEntrada ? 'Registrar Ingreso' : 'Registrar Egreso')
+              : 'Actualizar Presupuesto'}
           </motion.button>
         </div>
       </motion.div>
@@ -244,37 +337,72 @@ function CategoryModal({
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export function Dashboard({ onOpenSettings }: Props) {
-  const { user, sales, categories, setCategories } = useApp();
+  const { user, sales, expenses, categories, setCategories, addSale, addExpense } = useApp();
   const [period, setPeriod] = useState<Period>('today');
   const [isPeriodOpen, setIsPeriodOpen] = useState(false);
   const [longPressedCat, setLongPressedCat] = useState<CatWithTotal | null>(null);
+  const [showAddTransaction, setShowAddTransaction] = useState(false);
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useOfflineDetection();
 
   const selectedCategories = useMemo(() => categories.filter(c => c.selected), [categories]);
 
+  // Entradas (ingresos)
   const periodSales = useMemo(() => filterByPeriod(sales, period), [sales, period]);
   const prevPeriodSales = useMemo(() => filterByPrevPeriod(sales, period), [sales, period]);
-
   const totalRevenue = useMemo(() => periodSales.reduce((s, t) => s + t.amount, 0), [periodSales]);
   const prevRevenue = useMemo(() => prevPeriodSales.reduce((s, t) => s + t.amount, 0), [prevPeriodSales]);
-
   const percentChange = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
   const isUp = percentChange >= 0;
 
-  const salesByCategory = useMemo(() => {
-    return selectedCategories.map(cat => {
-      const catSales = periodSales.filter(s => s.categoryId === cat.id);
-      const total = catSales.reduce((s, t) => s + t.amount, 0);
-      return { ...cat, total, count: catSales.length };
-    }).filter(c => c.total > 0 || selectedCategories.length <= 4);
-  }, [selectedCategories, periodSales]);
+  // Transacciones (egresos) — alimentan las barras de presupuesto
+  const periodExpenses = useMemo(() => filterByPeriod(expenses, period), [expenses, period]);
+  const totalExpenses = useMemo(() => periodExpenses.reduce((s, e) => s + e.amount, 0), [periodExpenses]);
 
+  const expensesByCategory = useMemo(() => {
+    return selectedCategories
+      .map(cat => {
+        const catExp = periodExpenses.filter(e => e.categoryId === cat.id);
+        const total = catExp.reduce((s, e) => s + e.amount, 0);
+        return { ...cat, total, count: catExp.length };
+      })
+      .filter(c => c.total > 0 || selectedCategories.length <= 4)
+      .sort((a, b) => b.total - a.total);
+  }, [selectedCategories, periodExpenses]);
+
+  const categoryBarsMax = useMemo(() => {
+    if (expensesByCategory.length === 0) return 1;
+    return Math.max(
+      1,
+      ...expensesByCategory.map(c => Math.max(c.total, c.salesGoal || 0)),
+    );
+  }, [expensesByCategory]);
+
+  // Presupuesto global y Monto Disponible General
+  const totalBudget = useMemo(
+    () => selectedCategories.reduce((s, c) => s + (c.salesGoal || 0), 0),
+    [selectedCategories],
+  );
+  const montoDisponibleGeneral = totalBudget - totalExpenses;
+  const disponiblePct = totalBudget > 0
+    ? Math.max(0, Math.min(100, (montoDisponibleGeneral / totalBudget) * 100))
+    : 0;
+
+  // Métodos de pago combinan Entradas y Transacciones (spec: ambos se asocian visualmente)
   const paymentTotals = useMemo(() => {
-    const map: Record<string, number> = {};
-    periodSales.forEach(s => { map[s.paymentMethod] = (map[s.paymentMethod] ?? 0) + s.amount; });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]);
-  }, [periodSales]);
+    const map: Record<string, { in: number; out: number }> = {};
+    periodSales.forEach(s => {
+      const slot = (map[s.paymentMethod] ??= { in: 0, out: 0 });
+      slot.in += s.amount;
+    });
+    periodExpenses.forEach(e => {
+      const slot = (map[e.paymentMethod] ??= { in: 0, out: 0 });
+      slot.out += e.amount;
+    });
+    return Object.entries(map)
+      .map(([method, v]) => ({ method, ...v, net: v.in - v.out }))
+      .sort((a, b) => (b.in + b.out) - (a.in + a.out));
+  }, [periodSales, periodExpenses]);
 
   const recentSales = useMemo(() => sales.slice(0, 6), [sales]);
 
@@ -288,6 +416,31 @@ export function Dashboard({ onOpenSettings }: Props) {
   };
   const handleUpdateGoal = (catId: string, newGoal: number) => {
     setCategories(categories.map(c => c.id === catId ? { ...c, salesGoal: newGoal } : c));
+  };
+
+  const handleRegisterMovement = (
+    type: MovementType,
+    categoryId: string,
+    movementAmount: number,
+    movementDescription: string,
+    movementPaymentMethod: PaymentMethod,
+  ) => {
+    if (type === 'entrada') {
+      addSale({
+        product: movementDescription,
+        amount: movementAmount,
+        paymentMethod: movementPaymentMethod,
+        location: 'store',
+        categoryId,
+      });
+    } else {
+      addExpense({
+        description: movementDescription,
+        amount: movementAmount,
+        paymentMethod: movementPaymentMethod,
+        categoryId,
+      });
+    }
   };
 
   return (
@@ -356,8 +509,13 @@ export function Dashboard({ onOpenSettings }: Props) {
           </AnimatePresence>
         </div>
 
-        {/* Total revenue */}
-        <motion.div key={period} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-3">
+        {/* Total Ventas (Entradas) */}
+        <motion.div
+          key={`rev-${period}`}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-3"
+        >
           <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">Total Ventas</p>
           <div className="flex items-end gap-3">
             <span className="text-5xl font-bold text-foreground leading-none">
@@ -371,53 +529,64 @@ export function Dashboard({ onOpenSettings }: Props) {
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            {periodSales.length} venta{periodSales.length !== 1 ? 's' : ''} registrada{periodSales.length !== 1 ? 's' : ''}
+            {periodSales.length} entrada{periodSales.length !== 1 ? 's' : ''} registrada{periodSales.length !== 1 ? 's' : ''}
           </p>
         </motion.div>
 
-        {/* Payment method pills */}
-        {paymentTotals.length > 0 && (
-          <div className="flex gap-2 mt-4 flex-wrap">
-            {paymentTotals.map(([method, amount]) => (
-              <div
-                key={method}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card border border-border text-xs font-medium"
-              >
-                <span>{PAYMENT_ICONS[method]}</span>
-                <span className="text-muted-foreground">{PAYMENT_LABELS[method]}</span>
-                <span className="text-foreground font-semibold">{formatBs(amount)}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* ── Category bars (Barras.jpeg design) ───────────────────────────────── */}
-      {salesByCategory.length > 0 && (
-        <div className="px-5 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Por categoría</p>
-            <p className="text-[10px] text-muted-foreground">Mantén 2s para gestionar</p>
-          </div>
-          <div
-            className="grid gap-3"
-            style={{ gridTemplateColumns: `repeat(${Math.min(salesByCategory.length, 4)}, 1fr)` }}
+      {/* ── Egresos por categoría (Barras presupuesto) ───────────────────────────────── */}
+      {expensesByCategory.length > 0 && (
+        <div className="mb-6 relative">
+          {/* Plus button (alternative to long-press category) */}
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={() => setShowAddTransaction(true)}
+            aria-label="Registrar movimiento"
+            className="absolute top-3 right-7 z-10 w-10 h-10 rounded-full flex items-center justify-center shadow-lg"
+            style={{ background: 'linear-gradient(135deg, #d946ef 0%, #9333ea 100%)' }}
           >
-            {salesByCategory.slice(0, 4).map((cat, index) => {
-              // Bar height relative to goal (not max category)
-              const barPct = cat.salesGoal > 0
-                ? Math.min((cat.total / cat.salesGoal) * 100, 100)
-                : 0;
+            <Plus size={20} className="text-white" strokeWidth={2.5} />
+          </motion.button>
 
-              const exceeds60 = cat.salesGoal > 0 && cat.total >= cat.salesGoal * 0.6;
-              const exceededGoal = cat.salesGoal > 0 && cat.total > cat.salesGoal;
-              const isLow = cat.salesGoal > 0 && cat.total < cat.salesGoal * 0.6 && cat.total > 0;
-              const achievedPct = cat.salesGoal > 0 ? Math.round((cat.total / cat.salesGoal) * 100) : 0;
+          {/* Outer dark canvas: extra padding (top/bottom/sides) so the bar glow can bleed
+              over the black background without being clipped at the edges. The bars keep
+              their original height; only the surrounding frame grows. */}
+          <div
+            className="rounded-3xl pt-8 pb-7 px-7 mx-5"
+            style={{ backgroundColor: '#0a0a0a' }}
+          >
+            <div
+              className="flex gap-3 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden"
+              style={{
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+                WebkitOverflowScrolling: 'touch',
+                scrollSnapType: 'x proximity',
+              }}
+            >
+            {expensesByCategory.map((cat, index) => {
+              const SLOT_HEIGHT = 240;
+              const MIN_BAR_HEIGHT = 78;
 
-              // Card background: light tint of category color; red if low performer
-              const cardBg = isLow ? '#ef444410' : cat.color + '14';
-              // Bar color: red if low, green if exceeded, else category color
-              const barColor = isLow ? '#ef4444' : exceededGoal ? '#10b981' : cat.color;
+              const pctOfBudget = cat.salesGoal > 0 ? (cat.total / cat.salesGoal) * 100 : 0;
+              const showDashed = cat.salesGoal > 0 && pctOfBudget >= 60;
+              const exceededGoal = cat.salesGoal > 0 && pctOfBudget > 100;
+
+              // Tier-based luminous pastel color
+              const tierColor = exceededGoal
+                ? '#f8b1bf'
+                : pctOfBudget >= 60
+                  ? '#f9b988'
+                  : '#cce868';
+
+              // Bar height proportional to spending across all visible categories
+              const rawBarPx = (cat.total / categoryBarsMax) * SLOT_HEIGHT;
+              const barHeightPx = cat.total > 0 ? Math.max(MIN_BAR_HEIGHT, rawBarPx) : 0;
+              const dashedHeightPx = Math.min(
+                SLOT_HEIGHT,
+                (cat.salesGoal / categoryBarsMax) * SLOT_HEIGHT,
+              );
 
               return (
                 <motion.div
@@ -431,68 +600,147 @@ export function Dashboard({ onOpenSettings }: Props) {
                   onTouchStart={() => handlePressStart(cat)}
                   onTouchEnd={handlePressEnd}
                   onTouchCancel={handlePressEnd}
-                  className="flex flex-col items-center rounded-2xl p-3 cursor-pointer select-none"
-                  style={{ backgroundColor: cardBg, height: '192px' }}
+                  className="flex-shrink-0 relative cursor-pointer select-none"
+                  style={{
+                    width: '28%',
+                    minWidth: 92,
+                    height: SLOT_HEIGHT,
+                    scrollSnapAlign: 'start',
+                  }}
                 >
-                  {/* Emoji + name — fixed top section */}
-                  <span className="text-2xl mb-1 flex-shrink-0">{cat.emoji}</span>
-                  <p className="text-[10px] text-muted-foreground text-center mb-2 truncate w-full leading-tight flex-shrink-0">
-                    {cat.name}
-                  </p>
+                  {/* Dashed budget outline — visible only when at or above 60% of budget */}
+                  {showDashed && (
+                    <div
+                      className="absolute inset-x-0 bottom-0 rounded-2xl border-2 border-dashed pointer-events-none"
+                      style={{
+                        height: dashedHeightPx,
+                        borderColor: 'rgba(255,255,255,0.42)',
+                      }}
+                    />
+                  )}
 
-                  {/* Bar with dashed goal outline — flex-1 so all cards same height */}
-                  <div className="w-full flex-1 relative min-h-0">
-                    {/* Dashed rectangle = goal boundary. Shown only when ≥60% */}
-                    {exceeds60 && (
-                      <div
-                        className="absolute inset-0 rounded-xl border-2 border-dashed"
-                        style={{ borderColor: cat.color + '80' }}
-                      />
-                    )}
-
-                    {/* Filled bar — grows from bottom */}
-                    {cat.total > 0 && (
-                      <motion.div
-                        initial={{ height: '0%' }}
-                        animate={{ height: `${Math.max(barPct, 6)}%` }}
-                        transition={{ duration: 0.9, delay: index * 0.07 + 0.15, ease: [0.34, 1.2, 0.64, 1] }}
-                        className="absolute bottom-0 rounded-xl"
-                        style={{
-                          left: exceeds60 ? '3px' : '0px',
-                          right: exceeds60 ? '3px' : '0px',
-                          backgroundColor: barColor,
-                        }}
-                      />
-                    )}
-
-                    {/* Empty state */}
-                    {cat.total === 0 && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-[10px] text-muted-foreground">—</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Fixed-height bottom info — always same space so all cards align */}
-                  <div className="mt-2 flex flex-col items-center flex-shrink-0" style={{ height: '36px', justifyContent: 'flex-start' }}>
-                    <p
-                      className="text-[11px] font-bold text-center leading-tight"
-                      style={{ color: isLow ? '#ef4444' : barColor }}
+                  {/* Filled glowing bar with emoji + amount + percent inside */}
+                  {cat.total > 0 && (
+                    <motion.div
+                      initial={{ height: 0 }}
+                      animate={{ height: barHeightPx }}
+                      transition={{
+                        duration: 0.9,
+                        delay: index * 0.07 + 0.15,
+                        ease: [0.34, 1.2, 0.64, 1],
+                      }}
+                      className="absolute bottom-0 inset-x-0 rounded-2xl flex flex-col items-center justify-end pb-3 pt-2"
+                      style={{
+                        backgroundColor: tierColor,
+                        boxShadow: `0 0 26px ${tierColor}99, 0 0 50px ${tierColor}44`,
+                      }}
                     >
-                      {cat.total > 0 ? formatBs(cat.total) : '—'}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground leading-tight">
-                      {cat.salesGoal > 0 && cat.total > 0 ? `${achievedPct}%` : ' '}
-                    </p>
-                    <p className="text-[9px] text-[#10b981] font-semibold leading-tight" style={{ visibility: exceededGoal ? 'visible' : 'hidden' }}>
-                      ✓ meta
-                    </p>
-                  </div>
+                      <span className="text-2xl leading-none mb-1">{cat.emoji}</span>
+                      <p className="text-[11px] font-bold text-black/85 leading-tight">
+                        {formatCompactBs(cat.total)}
+                      </p>
+                      {cat.salesGoal > 0 && (
+                        <p className="text-[10px] text-black/65 leading-tight mt-0.5">
+                          {Math.round(pctOfBudget)}%
+                        </p>
+                      )}
+                    </motion.div>
+                  )}
+
+                  {/* Empty state placeholder when no spending yet */}
+                  {cat.total === 0 && (
+                    <div className="absolute inset-x-0 bottom-0 h-[78px] rounded-2xl border border-white/10 flex flex-col items-center justify-center">
+                      <span className="text-2xl opacity-50 mb-0.5">{cat.emoji}</span>
+                      <span className="text-[10px] text-white/40">—</span>
+                    </div>
+                  )}
                 </motion.div>
               );
             })}
+            </div>
           </div>
         </div>
+      )}
+
+      {/* Payment methods (Entradas + Egresos combinadas) */}
+      {paymentTotals.length > 0 && (
+        <div className="px-5 mb-5">
+          <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+            Métodos de pago
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            {paymentTotals.map(({ method, in: incoming, out: outgoing }) => (
+              <div
+                key={method}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-card border border-border text-xs font-medium"
+              >
+                <span>{PAYMENT_ICONS[method]}</span>
+                <span className="text-muted-foreground">{PAYMENT_LABELS[method]}</span>
+                {incoming > 0 && (
+                  <span className="text-[#10b981] font-semibold">+{formatBs(incoming)}</span>
+                )}
+                {outgoing > 0 && (
+                  <span className="text-[#ef4444] font-semibold">-{formatBs(outgoing)}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Monto Disponible General (Presupuesto Restante Global) */}
+      {totalBudget > 0 && (
+        <motion.div
+          key={`disp-${period}`}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="mx-5 mb-6 p-4 rounded-2xl border"
+          style={{
+            borderColor: montoDisponibleGeneral >= 0 ? '#10b98155' : '#ef444466',
+            backgroundColor: montoDisponibleGeneral >= 0 ? '#10b9811a' : '#ef44441a',
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">
+              Monto disponible general
+            </p>
+            <span
+              className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+              style={{
+                color: montoDisponibleGeneral >= 0 ? '#10b981' : '#ef4444',
+                backgroundColor: montoDisponibleGeneral >= 0 ? '#10b98122' : '#ef444422',
+              }}
+            >
+              {Math.round(disponiblePct)}% libre
+            </span>
+          </div>
+          <div className="flex items-end gap-2">
+            <span
+              className="text-3xl font-bold leading-none"
+              style={{ color: montoDisponibleGeneral >= 0 ? '#10b981' : '#ef4444' }}
+            >
+              {formatBs(Math.max(0, montoDisponibleGeneral))}
+            </span>
+            <span className="text-xs text-muted-foreground mb-1">
+              de {formatBs(totalBudget)}
+            </span>
+          </div>
+          {montoDisponibleGeneral < 0 && (
+            <p className="text-[11px] text-[#ef4444] mt-1">
+              Te pasaste del presupuesto en {formatBs(Math.abs(montoDisponibleGeneral))}
+            </p>
+          )}
+          <div className="mt-3 h-1.5 rounded-full overflow-hidden bg-white/10">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${disponiblePct}%`,
+                backgroundColor: montoDisponibleGeneral >= 0 ? '#10b981' : '#ef4444',
+              }}
+            />
+          </div>
+        </motion.div>
       )}
 
       {/* No sales state */}
@@ -568,6 +816,26 @@ export function Dashboard({ onOpenSettings }: Props) {
             category={longPressedCat}
             onClose={() => setLongPressedCat(null)}
             onUpdateGoal={handleUpdateGoal}
+            onRegisterMovement={handleRegisterMovement}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Modal AddTransaction — alternativa al long-press de categoría */}
+      <AnimatePresence>
+        {showAddTransaction && (
+          <AddTransaction
+            categories={selectedCategories}
+            selectedCategoryId={null}
+            onClose={() => setShowAddTransaction(false)}
+            onAddTransaction={(type, categoryId, movAmount, movDesc, payment) => {
+              handleRegisterMovement(type, categoryId, movAmount, movDesc, payment);
+              toast.success(
+                `${type === 'entrada' ? '💰 Entrada registrada: +' : '💸 Transacción registrada: -'}${formatBs(movAmount)}`,
+                { duration: 4000 },
+              );
+              setShowAddTransaction(false);
+            }}
           />
         )}
       </AnimatePresence>
